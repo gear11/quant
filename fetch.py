@@ -10,6 +10,7 @@ from sources import fetch_yahoo
 from request import Request, Resolution
 from pandas import DataFrame
 from functools import partial
+from timer import Timer
 
 
 _fetchers = {
@@ -48,7 +49,8 @@ def main():
     parser.add_argument('-r', dest='resolution', type=Resolution, help='Resolution type', default=Resolution.DAY)
     args = parser.parse_args()
 
-    data_frames = fetch(args.source, args.symbols, args.start, args.end)
+    with Timer('fetch'):
+        data_frames = fetch(args.source, args.symbols, args.start, args.end)
     for index, df in enumerate(data_frames):
         # print(f'{df.shape[0]} {request.resolution.name.lower()}(s) of data for {args.symbol[index]}:')
         print(f'{df.shape[0]} days(s) of data for {args.symbols[index]}:')
