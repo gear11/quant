@@ -8,12 +8,13 @@ __license__ = "Apache 2.0"
 import argparse
 from ibkr import InteractiveBroker
 from broker import BrokerListener, Position, Direction
-import console as c
+from markets import Bar
+import console
 
 
 class Trader(BrokerListener):
     def __init__(self):
-        c.announce('Starting the IBKR interface')
+        console.announce('Starting the IBKR interface')
         self.broker = InteractiveBroker()
         self.broker.start()
         self.prev_close = 0
@@ -22,26 +23,25 @@ class Trader(BrokerListener):
         self.order = None
 
     def open_position(self, position: Position):
-        c.announce(f'Opening position on {position.symbol}: {position}')
+        console.announce(f'Opening position on {position.symbol}: {position.direction.name} {position.quantity}')
         self.listen(position.symbol)
+        self.broker.subscribe_real_time(position.symbol)
         self.broker.open(position)
 
     def listen(self, symbol):
         self.broker.listen(symbol, self)
 
-    def on_bar(self, symbol, date, open_, high, low, close, volume, wap, count):
-        date_str = date.strftime("%Y%m%d %H:%M:%S")
-        close_str = c.fmt(close, self.prev_close if self.prev_close else open_)
-        wap_str = c.fmt(wap, self.prev_wap if self.prev_wap else wap, bold=True)
-        p_and_l = '[  NA  ]' if not self.order else f'[{self.p_and_l(): >6}]'
-        print(f'{date_str} {symbol} {wap_str} O{c.fmt(open_)}-H{c.fmt(high, open_)}-L{c.fmt(low, open_)}-C{close_str}'
-              f' {volume: >4} {p_and_l}')
-        self.prev_close = close
-        self.prev_wap = wap
+    def on_bar(self, symbol, bar: Bar):
+        console.print_bar(symbol, bar)
+        self.prev_close = bar.close
+        self.prev_wap = bar.wap
 
     def p_and_l(self):
         if not self.order:
             return 0
+
+    def shutdown(self):
+        self.broker.shutdown()
 
 
 def main():
@@ -59,6 +59,7 @@ def main():
     trader.open_position(position)
 
     input('Enter anything to quit\n')
+    trader.shutdown()
 
 
 if __name__ == "__main__":

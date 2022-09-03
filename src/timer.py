@@ -1,4 +1,9 @@
 import time
+from datetime import timedelta
+
+
+def to_time_string(delta: timedelta):
+    return f'{delta.days} D'
 
 
 class Timer:

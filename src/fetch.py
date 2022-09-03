@@ -6,19 +6,21 @@ from __future__ import annotations
 
 import argparse
 import dateparser
-from sources import fetch_yahoo
-from request import Request, Resolution
+from sources import fetch_yahoo, fetch_ibkr
+from markets import DataRequest, Resolution
 from pandas import DataFrame
 from functools import partial
 from timer import Timer
+import console
 
 
 _fetchers = {
     "yahoo": fetch_yahoo,
+    "ibkr": fetch_ibkr,
 }
 
 
-def fetch(source: str, symbols: list[str], start: str, end='today', resolution=Resolution.DAY) -> list[DataFrame]:
+def fetch(source: str, symbol: str, start: str, end='today', resolution=Resolution.DAY) -> DataFrame:
     start = dateparser.parse(start)
     if start is None:
         raise IOError(f'Unrecognized start date: {start}')
@@ -27,8 +29,8 @@ def fetch(source: str, symbols: list[str], start: str, end='today', resolution=R
     if end is None:
         raise IOError(f'Unrecognized end date: {end}')
 
-    request = Request(start, end, symbols, resolution)
-    print(f'Fetching {symbols} from {source} between {start} and {end}. Request: {request}')
+    request = DataRequest(symbol, start, end, resolution)
+    print(f'Fetching {symbol} from {source} between {start} and {end}. Request: {request}')
     return _fetchers[source](request)
 
 
@@ -50,11 +52,15 @@ def main():
     args = parser.parse_args()
 
     with Timer('fetch'):
-        data_frames = fetch(args.source, args.symbols, args.start, args.end)
+        data_frames = []
+        for symbol in args.symbols:
+            symbol = symbol.upper()
+            data_frames.append(fetch(args.source, symbol, args.start, args.end))
     for index, df in enumerate(data_frames):
         # print(f'{df.shape[0]} {request.resolution.name.lower()}(s) of data for {args.symbol[index]}:')
         print(f'{df.shape[0]} days(s) of data for {args.symbols[index]}:')
-        print(df)
+        # print(df)
+        console.print_data_frame(args.symbols[index], df)
 
 
 if __name__ == "__main__":

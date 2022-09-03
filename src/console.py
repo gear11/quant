@@ -1,6 +1,12 @@
 """
  Functions for colored and bold output to the console
 """
+from decimal import Decimal
+from markets import Bar
+from pandas import DataFrame
+import datetime
+import dateparser
+from numpy import float64
 
 
 class Colors:
@@ -23,9 +29,49 @@ def announce(msg):
     print(f'{blue(msg)}')
 
 
-def fmt(value, comparison=None, bold=False):
+def render_val(value, comparison=None, bold=False):
+    if value is None:
+        return 'NaN'
     comparison = value if comparison is None else comparison
     start_color = Colors.RED if value < comparison else Colors.GREEN if value > comparison else ''
     bold = Colors.BOLD if bold else ''
-    val_str = f'{value:.2f}' if type(value) is float else f'{value}'
+    is_float = type(value) in (float, Decimal, float64)
+    if is_float and value < 10:
+        val_str = f'{value:.3f}'
+    elif is_float:
+        val_str = f'{value:.2f}'
+    else:
+        val_str = f'{value}'
     return f'{start_color}{bold}{val_str}{Colors.ENDC}'
+
+
+def render_bar(symbol: str, bar: Bar, prev_close=None, prev_wap=None):
+    date_str = bar.date.strftime("%Y-%m-%d %H:%M:%S")
+    close_str = render_val(bar.close, prev_close if prev_close else bar.open)
+    wap_str = render_val(bar.wap, prev_wap if prev_wap else bar.wap, bold=True)
+    return f'{date_str} {symbol} {wap_str}' \
+           f' O{render_val(bar.open)}-H{render_val(bar.high, bar.open)}' \
+           f'-L{render_val(bar.low, bar.open)}-C{close_str}' \
+           f' {bar.volume: >4}'
+
+
+def render_bar_data(symbol: str, date, open_, high, low, close, volume, ref_price, prev_close=None, prev_ref_price=None):
+    date_str = date.strftime("%Y-%m-%d %H:%M:%S")
+    close_str = render_val(close, prev_close if prev_close else open_)
+    ref_price_str = render_val(ref_price, prev_ref_price if prev_ref_price else ref_price, bold=True)
+    return f'{date_str} {symbol} {ref_price_str}' \
+           f' O{render_val(open_)}-H{render_val(high, open_)}' \
+           f'-L{render_val(low, open_)}-C{close_str}' \
+           f' {volume: >4}'
+
+
+def print_bar(symbol: str, bar: Bar):
+    print(render_bar(symbol, bar))
+
+
+def print_data_frame(symbol, df: DataFrame):
+    for index, row in df.iterrows():
+        date = index if type(index) is datetime else dateparser.parse(str(index))
+        args = [row[label] for label in df]
+        print(render_bar_data(symbol.upper(), date, *args))
+

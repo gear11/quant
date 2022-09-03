@@ -1,6 +1,7 @@
 from enum import Enum
 from typing import NamedTuple
 from decimal import Decimal
+from markets import Bar
 
 
 class Direction(Enum):
@@ -21,6 +22,6 @@ class ExecutedOrder(NamedTuple):
 
 class BrokerListener:
 
-    def on_bar(self, symbol, date, open_, high, low, close, volume, wap, count):
+    def on_bar(self, symbol, bar: Bar):
         """Load in the file for extracting text."""
         pass
