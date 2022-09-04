@@ -32,21 +32,33 @@ class Position(NamedTuple):
     def __str__(self):
         return f'{self.symbol} {self.direction.name} {self.quantity}'
 
+    def __radd__(self, other: 'Position'):
+        if type(other) is int:
+            val = other + self.quantity
+        elif other.symbol != self.symbol:
+            raise ValueError(f'Incompatible positions to add: {other.symbol} {self.symbol}')
+        else:
+            val = other.quantity * other.direction.value + self.quantity * self.direction.value
+        if val < 0:
+            direction = Direction.SHORT
+            val = abs(val)
+        else:
+            direction = Direction.LONG
+        return Position(self.symbol, direction, val)
+
 
 class Order:
-    def __init__(self, position: Position, status = OrderStatus.UNPOSTED, id=-1, filled_at=Decimal(0), filled_quantity=0):
+    def __init__(self, position: Position, status=OrderStatus.UNPOSTED, id=-1, filled_at=Decimal(0), filled_quantity=0):
         self.position = position
         self.status = status
         self.id = id
         self.filled_at = filled_at
         self.filled_quantity = filled_quantity
 
-
     def update_status(self, status: OrderStatus, filled_at=None, filled_quantity=None) -> 'Order':
         filled_at = filled_at or self.filled_at
         filled_quantity = filled_quantity or self.filled_quantity
         return Order(self.position, status, self.id, filled_at, filled_quantity)
-
 
     def p_and_l(self, current_val):
         if self.status is OrderStatus.UNPOSTED:
@@ -56,24 +68,23 @@ class Order:
     def __str__(self):
         return f'{self.id} {self.position} filled {self.filled_quantity} at {self.filled_at} ({self.status.name})'
 
+
 class BrokerListener(ABC):
 
     @abstractmethod
     def on_bar(self, symbol, bar: Bar):
         """Load in the file for extracting text."""
-        pass
-
 
     @abstractmethod
     def on_order_status(self, order: Order):
         """Load in the file for extracting text."""
-        pass
+
 
 class Broker(ABC):
 
     def __init__(self):
-        self.open_orders: list[Order] = []
-        self.filled_orders: list[Order] = []
+        self.open_orders: list[Order]
+        self.filled_orders: list[Order]
 
     @abstractmethod
     def start(self):
@@ -89,16 +100,20 @@ class Broker(ABC):
 
     @abstractmethod
     def listen(self, symbol: str, listener: BrokerListener):
-       '''Adds the listener to events'''
+        """Adds the listener to events"""
 
     @abstractmethod
     def subscribe_real_time(self, symbol):
-        '''Subscribe to realtime events for the given symbol'''
+        """Subscribe to realtime events for the given symbol"""
 
     @abstractmethod
     def get_history(self, request: DataRequest):  # , start: datetime, end: datetime = None):
-        '''Get history for the given symbol'''
+        """Get history for the given symbol"""
 
     @abstractmethod
     def place_order(self, position: Position) -> Order:
-        '''Places an order to acquire the given position'''
+        """Places an order to acquire the given position"""
+
+    @abstractmethod
+    def current_position(self) -> Position:
+        """Computes the current position based on order history"""

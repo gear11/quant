@@ -55,20 +55,30 @@ class Trader(BrokerListener):
 
     def status(self):
         if self.is_open and not self.is_closed:
-            console.announce(f'Position OPEN: {self.initial_position}')
+            print(f'\tPosition OPEN: {self.initial_position}')
         elif self.is_closed:
-            console.announce(f'Position CLOSED: {self.initial_position}')
+            print(f'\tPosition CLOSED: {self.initial_position}')
         else:
-            console.announce(f'Position not yet open: {self.initial_position}')
+            print(f'\tPosition not yet open: {self.initial_position}')
 
-        for order in self.broker.open_orders:
-            print(order)
+        orders = self.broker.open_orders
+        if orders:
+            print(f'\t{len(orders)} open orders:')
+            for order in orders:
+                print(f'\t\t{order}')
+        else:
+            print('\tNo open orders')
 
-        print('Current position')
-        sum(self.broker.filled_orders)
+        print(f'\tCurrent position: {self.broker.current_position()}')
 
     def reduce_position(self, quantity: int):
-        pass
+        current_pos = self.broker.current_position()
+        if not current_pos:
+            console.error('No position to reduce!')
+        else:
+            reduce = Position(current_pos.symbol, current_pos.reverse().direction, quantity)
+            console.announce(f'Placing reduce order {reduce}')
+            self.broker.place_order(reduce)
 
     def close_position(self):
         if not self.is_open or self.is_closed:
@@ -80,10 +90,14 @@ class Trader(BrokerListener):
         self.broker.cancel_pending_orders()
         self.await_open_orders()
 
-        reversal = self.initial_position.reverse()
-        console.announce(f'Placing reversal order {reversal}')
-        self.broker.place_order(reversal)
-        self.await_open_orders()
+        current_pos = self.broker.current_position()
+        if current_pos and current_pos.quantity > 0:
+            reversal = self.broker.current_position().reverse()
+            console.announce(f'Placing reversal order {reversal}')
+            self.broker.place_order(reversal)
+            self.await_open_orders()
+        else:
+            console.announce(f'Current position is neutral. No need to place a closing order')
         self.is_closed = True
 
     def await_open_orders(self):
@@ -163,6 +177,7 @@ def main():
         if amount > position.quantity:
             console.error(f'Amount must be less than current position {position.quantity}: {amount}')
             return
+        trader.reduce_position(amount)
 
     commands['r'] = ('Reduce the position (prompts for share quantity)', reduce)
 

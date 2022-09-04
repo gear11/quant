@@ -48,6 +48,9 @@ class FakeBroker(Broker):
     def _run(self):
         self._fake_broker_thread.run()
 
+    def current_position(self) -> Position:
+        return sum(order.position for order in self._fake_broker_thread.orders)
+
 
 class FakeBrokerThread:
 

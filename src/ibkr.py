@@ -21,7 +21,11 @@ CONNECTION_ID = 1
 
 class InteractiveBroker(Broker):
 
+    def current_position(self) -> Position:
+        return sum(order.position for order in self.orders.values() if order.status is OrderStatus.FILLED)
+
     def __init__(self):
+        super().__init__()
         self.ib = IBApi(self)
         self.ib.connect('127.0.0.1', SIMULATED_TRADING_PORT, CONNECTION_ID)
         self.symbols = {}
@@ -29,7 +33,7 @@ class InteractiveBroker(Broker):
 
     @property
     def open_orders(self) -> list[BrokerOrder]:
-        return [ order for order in self.orders.values() if order.status in (OrderStatus.SUBMITTED, OrderStatus.PENDING)]
+        return [order for order in self.orders.values() if order.status in (OrderStatus.SUBMITTED, OrderStatus.PENDING)]
 
     @property
     def filled_orders(self) -> list[BrokerOrder]:
@@ -47,8 +51,8 @@ class InteractiveBroker(Broker):
 
     def cancel_pending_orders(self):
         for order in self.orders.values():
-            console.announce(f'Cancelling pending order {order}')
-            if order.status is OrderStatus.PENDING:
+            if order.status == OrderStatus.PENDING:
+                console.announce(f'Cancelling pending order {order}')
                 self.ib.cancelOrder(order.id)
 
     def listen(self, symbol: str, listener: BrokerListener):
@@ -62,6 +66,7 @@ class InteractiveBroker(Broker):
             console.error(f'Already listening to {symbol}')
 
     def subscribe_real_time(self, symbol):
+        console.announce(f'Subscribing to realtime data for {symbol}')
         contract = contract_for(symbol)
         what_to_show = 'MIDPOINT' if markets.is_forex(symbol) else 'TRADES'
         self.ib.reqRealTimeBars(self._find_id(symbol), contract, 5, what_to_show, False, [])
@@ -118,6 +123,7 @@ class InteractiveBroker(Broker):
             self.orders[order_id] = new_order
         else:
             console.warn(f'Received unknown open order status: {order_id} {status} {filled} {avg_fill_price}')
+
 def to_order_status(status: str) -> OrderStatus:
     if status in ('ApiPending', 'PendingSubmit', 'PendingCancel', 'PreSubmitted'):
         return OrderStatus.PENDING
@@ -177,7 +183,8 @@ class IBApi(EWrapper, EClient):
         #     self.permId2ord[order.permId] = order
 
     def orderStatus(self, order_id: OrderId, status: str, filled: float, remaining: float, avg_fill_price: float,
-                    perm_id: int,parent_id: int, last_fill_price: float, client_id: int,why_held: str, mkt_cap_price: float):
+                    perm_id: int,parent_id: int, last_fill_price: float, client_id: int, why_held: str, mkt_cap_price: float):
+        console.warn(f'Received IB order status {order_id} {status}')
         super().orderStatus(order_id, status, filled, remaining, avg_fill_price, perm_id, parent_id, last_fill_price,
                             client_id, why_held, mkt_cap_price)
         self.broker._on_order_status(order_id, status, filled, avg_fill_price)
