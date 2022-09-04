@@ -1,0 +1,7 @@
+
+name: VWAP (Long)
+description: Uses VWAP as a support level
+candlesticks: 5m
+target: 1.05 # percent of starting price
+sell_targets: # Percent of spread of starting price and target price; percent of original position
+  -0.05: 1.0  # Sell 100% of position if

@@ -1,10 +1,8 @@
-import queue
-
 from broker import Broker, Position, Order, BrokerListener, OrderStatus
 from markets import DataRequest, Bar
 import threading
 import time
-from queue import Queue
+from queue import Queue, Empty
 import random
 from datetime import datetime
 from decimal import Decimal
@@ -79,7 +77,7 @@ class FakeBrokerThread:
 
             try:
                 position = self.queue.get(block=True, timeout=1)
-            except queue.Empty:
+            except Empty:
                 pass
             else:
                 self.add_symbol(position.symbol)
@@ -147,6 +145,3 @@ class FakeBrokerThread:
 
 def to_dec(num):
     return Decimal('%.2f' % num)
-
-
-

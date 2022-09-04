@@ -12,17 +12,17 @@ from numpy import float64
 class Colors:
     HEADER = '\033[95m'
     BLUE = '\033[94m'
-    OKCYAN = '\033[96m'
+    CYAN = '\033[96m'
     GREEN = '\033[92m'
     WARNING = '\033[93m'
     RED = '\033[91m'
-    ENDC = '\033[0m'
+    END = '\033[0m'
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
 
 
 def wrap(msg, color: str):
-    return f'{color}{msg}{Colors.ENDC}'
+    return f'{color}{msg}{Colors.END}'
 
 
 def announce(msg):
@@ -31,6 +31,7 @@ def announce(msg):
 
 def error(msg):
     print(wrap(msg, Colors.RED))
+
 
 def warn(msg):
     print(wrap(msg, Colors.WARNING))
@@ -49,7 +50,7 @@ def render_val(value, comparison=None, bold=False):
         val_str = f'{value:.2f}'
     else:
         val_str = f'{value}'
-    return f'{start_color}{bold}{val_str}{Colors.ENDC}'
+    return f'{start_color}{bold}{val_str}{Colors.END}'
 
 
 def render_bar(symbol: str, bar: Bar, prev_close=None, prev_wap=None):
@@ -62,7 +63,7 @@ def render_bar(symbol: str, bar: Bar, prev_close=None, prev_wap=None):
            f' {bar.volume: >4}'
 
 
-def render_bar_data(symbol: str, date, open_, high, low, close, volume, ref_price, prev_close=None, prev_ref_price=None):
+def render_bar_data(symbol, date, open_, high, low, close, volume, ref_price, prev_close=None, prev_ref_price=None):
     date_str = date.strftime("%Y-%m-%d %H:%M:%S")
     close_str = render_val(close, prev_close if prev_close else open_)
     ref_price_str = render_val(ref_price, prev_ref_price if prev_ref_price else ref_price, bold=True)
@@ -81,4 +82,3 @@ def print_data_frame(symbol, df: DataFrame):
         date = index if type(index) is datetime else dateparser.parse(str(index))
         args = [row[label] for label in df]
         print(render_bar_data(symbol.upper(), date, *args))
-

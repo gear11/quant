@@ -1,3 +1,6 @@
+import sys
+
+
 class _Getch:
     """Gets a single character from standard input.  Does not echo to the screen."""
     def __init__(self):
@@ -11,10 +14,11 @@ class _Getch:
 
 class _GetchUnix:
     def __init__(self):
-        import tty, sys
+        pass
 
     def __call__(self):
-        import sys, tty, termios
+        import tty
+        import termios
         fd = sys.stdin.fileno()
         old_settings = termios.tcgetattr(fd)
         try:
@@ -27,7 +31,7 @@ class _GetchUnix:
 
 class _GetchWindows:
     def __init__(self):
-        import msvcrt
+        pass
 
     def __call__(self):
         import msvcrt
