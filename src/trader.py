@@ -45,10 +45,12 @@ class Trader(BrokerListener):
             self.subscriptions.add(symbol)
 
     def on_bar(self, symbol, bar: Bar):
-        console.print_bar(symbol, bar, self.prev_close, self.prev_wap)
+        msg = console.render_bar(symbol, bar, self.prev_close, self.prev_wap)
+        if self.is_open:
+            msg += console.wrap(f' [P/L: ${self.broker.p_or_l()}]', console.Colors.BLUE)
+        print(msg)
         self.prev_close = bar.close
         self.prev_wap = bar.wap
-
 
     def on_order_status(self, order: Order):
         print(f'Received order status: {order}')

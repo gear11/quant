@@ -1,3 +1,4 @@
+import console
 from broker import Broker, Position, Order, BrokerListener, OrderStatus
 from markets import DataRequest, Bar
 import threading
@@ -6,6 +7,8 @@ from queue import Queue, Empty
 import random
 from datetime import datetime
 from decimal import Decimal
+from sources import YahooData
+from numpy import NaN
 
 
 class FakeBroker(Broker):
@@ -16,7 +19,7 @@ class FakeBroker(Broker):
         self.queue = Queue()
         self.shutdown_request = False
         self.listeners: list[BrokerListener] = []
-        self._fake_broker_thread = FakeBrokerThread(self.queue, self.listeners)
+        self._worker = Worker(self.queue, self.listeners)
 
     def start(self):
         print('Starting Fake Broker Thread')
@@ -27,30 +30,42 @@ class FakeBroker(Broker):
         self.shutdown_request = True
 
     def cancel_pending_orders(self):
-        self._fake_broker_thread.cancel_pending_orders()
+        self._worker.cancel_pending_orders()
 
     def listen(self, symbol: str, listener: BrokerListener):
         self.listeners.append(listener)
 
     def subscribe_real_time(self, symbol):
-        self._fake_broker_thread.add_symbol(symbol)
+        self._worker.add_symbol(symbol)
 
     def get_history(self, request: DataRequest):
-        self._fake_broker_thread.get_history(request)
+        self._worker.get_history(request)
 
-    def place_order(self, position: Position) -> Order:
-        order = Order(position, OrderStatus.PENDING)
-        self._fake_broker_thread.orders.append(order)
-        return order
+    def place_order(self, position: Position):
+        self._worker.queue.put(position)
 
     def _run(self):
-        self._fake_broker_thread.run()
+        self._worker.run()
 
     def current_position(self) -> Position:
-        return sum(order.position for order in self._fake_broker_thread.orders)
+        return sum(order.position for order in self._worker.orders)
+
+    @property
+    def open_orders(self) -> list[Order]:
+        return [order for order in self._worker.orders if order.status in (OrderStatus.SUBMITTED, OrderStatus.PENDING)]
+
+    @property
+    def filled_orders(self) -> list[Order]:
+        return [order for order in self._worker.orders if order.status is OrderStatus.FILLED]
+
+    def p_or_l(self):
+        if not self.filled_orders:
+            return NaN
+        first = self.filled_orders[0]
+        return Order.combined_p_or_l(self.filled_orders, self._worker.prices[first.position.symbol])
 
 
-class FakeBrokerThread:
+class Worker:
 
     def __init__(self, queue: Queue, listeners: list[BrokerListener]):
         self.queue = queue
@@ -70,18 +85,18 @@ class FakeBrokerThread:
 
     def add_symbol(self, symbol):
         if symbol not in self.prices:
-            self.prices[symbol] = to_dec(random.uniform(10, 100))
+            console.announce(f'Looking up price of {symbol} from Yahoo')
+            self.prices[symbol] = YahooData.current_price(symbol)
 
     def run(self):
         while not self.shutdown_request:
-
             try:
                 position = self.queue.get(block=True, timeout=1)
             except Empty:
                 pass
             else:
                 self.add_symbol(position.symbol)
-                self.orders.append(Order(position, OrderStatus.PENDING, len(self.orders)))
+                self.orders.append(Order(position, OrderStatus.PENDING, id=len(self.orders)))
 
             self.update_orders()
 
@@ -132,7 +147,7 @@ class FakeBrokerThread:
             elif order.status is OrderStatus.SUBMITTED:
                 new_status = OrderStatus.FILLED
                 filled_quantity = order.position.quantity
-                filled_at = self.prices[order.position.symbol]
+                filled_at = to_dec(self.prices[order.position.symbol])
             new_order = order.update_status(new_status, filled_at, filled_quantity)
             new_orders.append(new_order)
 

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import argparse
 import dateparser
-from sources import fetch_yahoo, fetch_ibkr
+from sources import YahooData, IBKRData
 from markets import DataRequest, Resolution
 from pandas import DataFrame
 from functools import partial
@@ -15,8 +15,8 @@ import console
 
 
 _fetchers = {
-    "yahoo": fetch_yahoo,
-    "ibkr": fetch_ibkr,
+    "yahoo": YahooData.fetch,
+    "ibkr": IBKRData.fetch,
 }
 
 

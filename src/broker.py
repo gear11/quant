@@ -60,13 +60,17 @@ class Order:
         filled_quantity = filled_quantity or self.filled_quantity
         return Order(self.position, status, self.id, filled_at, filled_quantity)
 
-    def p_and_l(self, current_val):
+    def p_or_l(self, current_price):
         if self.status is OrderStatus.UNPOSTED:
             return Decimal(0)
-        return Decimal((current_val - self.filled_at) * self.filled_quantity * self.position.direction.value)
+        return Decimal((current_price - self.filled_at) * self.filled_quantity * self.position.direction.value)
 
     def __str__(self):
         return f'{self.id} {self.position} filled {self.filled_quantity} at {self.filled_at} ({self.status.name})'
+
+    @staticmethod
+    def combined_p_or_l(orders: 'list[Order]', current_price: Decimal):
+        return sum(order.p_or_l(current_price) for order in orders)
 
 
 class BrokerListener(ABC):
@@ -82,9 +86,15 @@ class BrokerListener(ABC):
 
 class Broker(ABC):
 
-    def __init__(self):
-        self.open_orders: list[Order]
-        self.filled_orders: list[Order]
+    @property
+    @abstractmethod
+    def open_orders(self) -> list[Order]:
+        """Returns all open orders"""
+
+    @property
+    @abstractmethod
+    def filled_orders(self) -> list[Order]:
+        """Returns all filled orders"""
 
     @abstractmethod
     def start(self):
@@ -117,3 +127,7 @@ class Broker(ABC):
     @abstractmethod
     def current_position(self) -> Position:
         """Computes the current position based on order history"""
+
+    @abstractmethod
+    def p_or_l(self):
+        """Returns cumulative P or L of filled orders based on fill price and current price"""
