@@ -3,3 +3,4 @@ src/IGE.xls
 src/__pycache__/
 src/calculateMaxDD.py
 src/quant_chapter_3.ipynb
+tests/__pycache__/

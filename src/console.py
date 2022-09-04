@@ -21,12 +21,19 @@ class Colors:
     UNDERLINE = '\033[4m'
 
 
-def blue(msg):
-    return f'{Colors.BLUE}{msg}{Colors.ENDC}'
+def wrap(msg, color: str):
+    return f'{color}{msg}{Colors.ENDC}'
 
 
 def announce(msg):
-    print(f'{blue(msg)}')
+    print(wrap(msg, Colors.BLUE))
+
+
+def error(msg):
+    print(wrap(msg, Colors.RED))
+
+def warn(msg):
+    print(wrap(msg, Colors.WARNING))
 
 
 def render_val(value, comparison=None, bold=False):
@@ -65,8 +72,8 @@ def render_bar_data(symbol: str, date, open_, high, low, close, volume, ref_pric
            f' {volume: >4}'
 
 
-def print_bar(symbol: str, bar: Bar):
-    print(render_bar(symbol, bar))
+def print_bar(symbol: str, bar: Bar, prev_close=None, prev_ref_price=None):
+    print(render_bar(symbol, bar, prev_close, prev_ref_price))
 
 
 def print_data_frame(symbol, df: DataFrame):

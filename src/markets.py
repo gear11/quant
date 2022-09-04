@@ -17,6 +17,9 @@ class Resolution(Enum):
     DOLLAR_BAR = 5
 
 
+def last_seven_days(symbol):
+    return DataRequest(symbol, dateparser.parse('7 days ago'), datetime.now())
+
 class DataRequest(NamedTuple):
     symbol: str
     start: datetime

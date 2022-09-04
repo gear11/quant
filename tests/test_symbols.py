@@ -1,4 +1,4 @@
-from symbols import SymbolData
+from markets import SymbolData, Bar
 from datetime import datetime
 
 
@@ -10,7 +10,7 @@ class TestSymbolData:
 
     def test_append(self):
         sd = SymbolData('foo')
-        sd.append_bar(datetime.now(), 1, 2, 3, 4, 5)
-        print(sd.data)
+        sd.append_bar(Bar(datetime.now(), 1, 2, 3, 4, 5, 6))
+        print(sd.data_frame)
 
 
