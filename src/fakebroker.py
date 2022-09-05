@@ -96,7 +96,7 @@ class Worker:
                 pass
             else:
                 self.add_symbol(position.symbol)
-                self.orders.append(Order(position, OrderStatus.PENDING, id=len(self.orders)))
+                self.orders.append(Order(position, OrderStatus.PENDING, order_id=len(self.orders)))
 
             self.update_orders()
 
@@ -124,7 +124,7 @@ class Worker:
             for listener in self.listeners:
                 listener.on_bar(request.symbol, bar)
 
-    def next_bar(self, prev_close):
+    def next_bar(self, prev_close):  # noqa No reason to make this static
         date = datetime.now()
         price = float(prev_close)
         high = random.uniform(price, price * 1.01)

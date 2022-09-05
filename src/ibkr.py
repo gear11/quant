@@ -7,7 +7,7 @@ from ibapi.wrapper import EWrapper, OrderState, OrderId, Order
 from ibapi.contract import Contract
 import threading
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from broker import Broker, BrokerListener, Position, Direction, Order as BrokerOrder, OrderStatus
 import console
 import markets
@@ -20,6 +20,9 @@ CONNECTION_ID = 1
 
 
 class InteractiveBroker(Broker):
+
+    def p_or_l(self):
+        pass
 
     def current_position(self) -> Position:
         return sum(order.position for order in self.orders.values() if order.status is OrderStatus.FILLED)
@@ -53,15 +56,15 @@ class InteractiveBroker(Broker):
         for order in self.orders.values():
             if order.status == OrderStatus.PENDING:
                 console.announce(f'Cancelling pending order {order}')
-                self.ib.cancelOrder(order.id)
+                self.ib.cancelOrder(order.order_id)
 
     def listen(self, symbol: str, listener: BrokerListener):
         symbol = symbol.upper()
         try:
             self._find_id(symbol)
         except ValueError:
-            id = len(self.symbols)
-            self.symbols[id] = (id, symbol, listener)
+            symbol_id = len(self.symbols)
+            self.symbols[symbol_id] = (symbol_id, symbol, listener)
         else:
             console.error(f'Already listening to {symbol}')
 
@@ -78,7 +81,8 @@ class InteractiveBroker(Broker):
         duration = timer.to_time_string(request.end - request.start)
 
         what_to_show = 'MIDPOINT' if markets.is_forex(request.symbol) else 'TRADES'
-        self.ib.reqHistoricalData(self._find_id(request.symbol), contract, query_time, duration, "1 day", what_to_show, 1, 1, False, [])
+        self.ib.reqHistoricalData(self._find_id(request.symbol), contract, query_time, duration, "1 day", what_to_show,
+                                  1, 1, False, [])
 
     def place_order(self, position: Position) -> BrokerOrder:
         order = Order()
@@ -97,13 +101,13 @@ class InteractiveBroker(Broker):
         return broker_order
 
     def _find_id(self, symbol):
-        for id, a_symbol, listener in self.symbols.values():
+        for symbol_id, a_symbol, listener in self.symbols.values():
             if a_symbol == symbol:
-                return id
-        raise ValueError( f'No such symbol {symbol}')
+                return symbol_id
+        raise ValueError(f'No such symbol {symbol}')
 
     def _on_bar_update(self, req_id: TickerId, date, open_: float, high: float, low: float, close: float,
-                      volume: int, wap: float):
+                       volume: int, wap: float):
         if type(date) is int:
             date = datetime.utcfromtimestamp(date)
         elif type(date) is str:
@@ -114,15 +118,17 @@ class InteractiveBroker(Broker):
         listener.on_bar(symbol, bar)
 
     def _on_order_status(self, order_id, status, filled, avg_fill_price):
-        console.warn(f'Received open order status: {order_id} {status} {filled} {avg_fill_price} {to_order_status(status)}')
+        status = to_order_status(status)
+        console.warn(f'Received open order status: {order_id} {status} {filled} {avg_fill_price} {status}')
         if order_id in self.orders:
             cur_order = self.orders[order_id]
-            new_order = cur_order.update_status(to_order_status(status), avg_fill_price, filled)
+            new_order = cur_order.update_status(status, avg_fill_price, filled)
             for _, _, listener in self.symbols.values():
                 listener.on_order_status(new_order)
             self.orders[order_id] = new_order
         else:
             console.warn(f'Received unknown open order status: {order_id} {status} {filled} {avg_fill_price}')
+
 
 def to_order_status(status: str) -> OrderStatus:
     if status in ('ApiPending', 'PendingSubmit', 'PendingCancel', 'PreSubmitted'):
@@ -146,16 +152,16 @@ class IBApi(EWrapper, EClient):
         self.order_id = 0
         self.ready = False
 
-    def realtimeBar(self, req_id: TickerId, time: int, open_: float, high: float, low: float, close: float,
+    def realtimeBar(self, req_id: TickerId, date: int, open_: float, high: float, low: float, close: float,
                     volume: int, wap: float, count: int):
-        self.broker._on_bar_update(req_id, time, open_, high, low, close, volume, wap)
+        self.broker._on_bar_update(req_id, date, open_, high, low, close, volume, wap) # noqa Module local
 
     def error(self, req_id: TickerId, error_code: int, error_str: str):
         print(f'ERROR: {req_id} {error_code}: {error_str} ')
 
     def historicalData(self, req_id, bar: BarData):
         # print(f'{req_id} {bar}')
-        self.broker._on_bar_update(req_id, bar.date, bar.open, bar.high, bar.low, bar.close, bar.volume, bar.average)
+        self.broker._on_bar_update(req_id, bar.date, bar.open, bar.high, bar.low, bar.close, bar.volume, bar.average) # noqa Module local
 
     def nextValidId(self, order_id):
         # print(f'Next valid ID: {order_id}')
@@ -183,11 +189,11 @@ class IBApi(EWrapper, EClient):
         #     self.permId2ord[order.permId] = order
 
     def orderStatus(self, order_id: OrderId, status: str, filled: float, remaining: float, avg_fill_price: float,
-                    perm_id: int,parent_id: int, last_fill_price: float, client_id: int, why_held: str, mkt_cap_price: float):
+                    perm_id: int, parent_id: int, last_fill_price: float, client_id: int, why_held: str, mkt_cap_price: float):
         console.warn(f'Received IB order status {order_id} {status}')
         super().orderStatus(order_id, status, filled, remaining, avg_fill_price, perm_id, parent_id, last_fill_price,
                             client_id, why_held, mkt_cap_price)
-        self.broker._on_order_status(order_id, status, filled, avg_fill_price)
+        self.broker._on_order_status(order_id, status, filled, avg_fill_price) # noqa Module local
         # print("OrderStatus. Id:", order_id, "Status:", status, "Filled:", c.render_val(filled),
         #       "Remaining:", c.render_val(remaining), "AvgFillPrice:", c.render_val(avg_fill_price),
         #       "PermId:", c.render_val(perm_id), "ParentId:", c.render_val(parent_id), "LastFillPrice:",
@@ -221,7 +227,7 @@ def crypto_contract(symbol):
 
 def forex_contract(symbol):
     contract = Contract()
-    contract.symbol = 'EUR'
+    contract.symbol = symbol
     contract.secType = 'CASH'  # 'FUT' ETC
     contract.exchange = 'IDEALPRO'
     contract.currency = 'USD'

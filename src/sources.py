@@ -18,7 +18,7 @@ class YahooData:
     @staticmethod
     def current_price(symbol: str):
         end = datetime.now()
-        start = end - timedelta(hours=48)
+        start = end - timedelta(days=4)  # Handle long weekend
         df = YahooData.fetch(DataRequest(symbol, start, end))
         return float(df['Close'].iloc[-1])
 

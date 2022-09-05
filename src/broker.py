@@ -32,13 +32,13 @@ class Position(NamedTuple):
     def __str__(self):
         return f'{self.symbol} {self.direction.name} {self.quantity}'
 
-    def __radd__(self, other: 'Position'):
+    def __add__(self, other: 'Position | int'):
         if type(other) is int:
-            val = other + self.quantity
+            val = self.quantity + other
         elif other.symbol != self.symbol:
             raise ValueError(f'Incompatible positions to add: {other.symbol} {self.symbol}')
         else:
-            val = other.quantity * other.direction.value + self.quantity * self.direction.value
+            val = other.quantity * other.direction.value + self.quantity * self.direction.value # noqa PyCharm can't do Enum.value
         if val < 0:
             direction = Direction.SHORT
             val = abs(val)
@@ -46,27 +46,34 @@ class Position(NamedTuple):
             direction = Direction.LONG
         return Position(self.symbol, direction, val)
 
+    def __radd__(self, other: 'Position'):
+        return self.__add__(other)
+
 
 class Order:
-    def __init__(self, position: Position, status=OrderStatus.UNPOSTED, id=-1, filled_at=Decimal(0), filled_quantity=0):
+    def __init__(self, position: Position, status=OrderStatus.UNPOSTED, order_id=-1, filled_at=Decimal(0),
+                 filled_quantity=0):
         self.position = position
         self.status = status
-        self.id = id
+        self.order_id = order_id
         self.filled_at = filled_at
         self.filled_quantity = filled_quantity
 
     def update_status(self, status: OrderStatus, filled_at=None, filled_quantity=None) -> 'Order':
         filled_at = filled_at or self.filled_at
         filled_quantity = filled_quantity or self.filled_quantity
-        return Order(self.position, status, self.id, filled_at, filled_quantity)
+        return Order(self.position, status, self.order_id, filled_at, filled_quantity)
 
     def p_or_l(self, current_price):
         if self.status is OrderStatus.UNPOSTED:
             return Decimal(0)
-        return Decimal((current_price - self.filled_at) * self.filled_quantity * self.position.direction.value)
+        return Decimal((current_price - self.filled_at) * self.filled_quantity * self.position.direction.value) # noqa PyCharm can't do Enum.value
 
     def __str__(self):
-        return f'{self.id} {self.position} filled {self.filled_quantity} at {self.filled_at} ({self.status.name})'
+        msg = f'{self.order_id} {self.position} {self.status.name}'
+        if self.status in (OrderStatus.FILLED, OrderStatus.PARTIALLY_FILLED):
+            msg += f' {self.filled_quantity} at {self.filled_at}'
+        return msg
 
     @staticmethod
     def combined_p_or_l(orders: 'list[Order]', current_price: Decimal):
