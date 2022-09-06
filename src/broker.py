@@ -4,6 +4,7 @@ from decimal import Decimal
 from markets import DataRequest
 from abc import abstractmethod, ABC
 from util.events import Event
+from numpy import NaN
 
 
 class Direction(Enum):
@@ -81,6 +82,48 @@ class Order:
         return sum(order.p_or_l(current_price) for order in orders)
 
 
+class OrderBook:
+    """Collects orders into a list-like class with aggregation operations"""
+    def __init__(self):
+        self.orders: list[Order] = []
+        self.orders_by_id = {}
+
+    def __getitem__(self, item):
+        return self.orders.__getitem__(item)
+
+    def __setitem__(self, index: int, order: Order):
+        self.orders[index] = order
+        self.orders_by_id[order.order_id] = (order, index)
+
+    def __len__(self):
+        return len(self.orders)
+
+    def append(self, order: Order):
+        self.orders.append(order)
+        self.orders_by_id[order.order_id] = (order, len(self.orders) - 1)
+
+    @property
+    def open_orders(self) -> list[Order]:
+        return [order for order in self.orders if order.status in (OrderStatus.SUBMITTED, OrderStatus.PENDING)]
+
+    @property
+    def filled_orders(self) -> list[Order]:
+        return [order for order in self.orders if order.status is OrderStatus.FILLED]
+
+    def orders_for(self, symbol):
+        return [order for order in self.orders if order.position.symbol == symbol]
+
+    def p_or_l(self, symbol, current_price):
+        return sum(order.p_or_l(current_price) for order in self.orders_for(symbol)
+                   if order.status is OrderStatus.FILLED)
+
+    def current_position(self, symbol) -> Position:
+        return sum(order.position for order in self.orders_for(symbol) if order.status is OrderStatus.FILLED)
+
+    def by_order_id(self, order_id) -> (Order, int):
+        return self.orders_by_id[order_id]
+
+
 class OrderEvent(Event):
 
     def __init__(self, order: Order):
@@ -124,9 +167,9 @@ class Broker(ABC):
         """Places an order to acquire the given position"""
 
     @abstractmethod
-    def current_position(self) -> Position:
+    def current_positions(self) -> list[Position]:
         """Computes the current position based on order history"""
 
     @abstractmethod
-    def p_or_l(self):
+    def p_or_l(self, symbol=None):
         """Returns cumulative P or L of filled orders based on fill price and current price"""

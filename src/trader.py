@@ -8,7 +8,7 @@ __license__ = "Apache 2.0"
 
 import argparse
 from ibkr import InteractiveBroker
-from broker import Broker, Position, Direction, Order, OrderEvent
+from broker import Broker, Position, Direction, OrderEvent
 import console
 import traceback
 from functools import partial
@@ -25,12 +25,13 @@ class Trader:
         self.prev_close = 0
         self.prev_wap = 0
         self.initial_position = position
+        self.symbol = position.symbol
         self.subscriptions = set()
         self.is_open = False  # Did we open a position?
         self.is_closed = False  # Did we close out our open position?
 
         events.observe(TickEvent, lambda event: self.on_bar(event.tick_bar))
-        events.observe(OrderEvent, lambda event: self.on_order_status(event.order))
+        events.observe(OrderEvent, lambda event: print(f'Received order status: {event.order}'))
 
     def open_position(self):
         if self.is_open:
@@ -54,12 +55,9 @@ class Trader:
         self.prev_close = bar.close
         self.prev_wap = bar.wap
 
-    def on_order_status(self, order: Order):
-        print(f'Received order status: {order}')
-
     def status(self):
         if self.is_open and not self.is_closed:
-            print(f'\tCurrent position OPEN: {self.broker.current_position()} with P/L {self.broker.p_or_l()}')
+            print(f'\tCurrent position OPEN: {self.broker.current_positions()} with P/L {self.broker.p_or_l()}')
         elif self.is_closed:
             print(f'\tCurrent position CLOSED: {self.initial_position} with P/L {self.broker.p_or_l()}')
         else:
@@ -82,10 +80,10 @@ class Trader:
         elif quantity < 1:
             console.error('Cannot reduce by a negative!')
         else:
-            current_pos = self.broker.current_position()
+            current_pos = self.broker.current_positions()[0]  # Assume only one position
             if current_pos.quantity < quantity:
                 raise ValueError(f'Cannot reduce {quantity} with current position only {current_pos.quantity}.')
-            reduce = Position(current_pos.symbol, current_pos.reverse().direction, quantity)
+            reduce = Position(self.symbol, current_pos.reverse().direction, quantity)
             console.announce(f'Placing reduce order {reduce}')
             self.broker.place_order(reduce)
 
@@ -99,10 +97,11 @@ class Trader:
         self.broker.cancel_pending_orders()
         self.await_open_orders()
 
-        reversal = self.broker.current_position().reverse()
-        console.announce(f'Placing reversal order {reversal}')
-        self.broker.place_order(reversal)
-        self.await_open_orders()
+        for position in self.broker.current_positions():
+            reversal = position.reverse()
+            console.announce(f'Placing reversal order {reversal}')
+            self.broker.place_order(reversal)
+            self.await_open_orders()
 
         self.is_closed = True
 
@@ -122,8 +121,7 @@ class Trader:
     def has_open_position(self):
         if not self.is_open or self.is_closed:
             return False
-        current_pos = self.broker.current_position()
-        return current_pos and current_pos.quantity > 0
+        return any(position.quantity for position in self.broker.current_positions())
 
     def is_active(self):
         return self.broker is not None

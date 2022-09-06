@@ -1,5 +1,5 @@
 import console
-from broker import Broker, Position, Order, OrderStatus, OrderEvent
+from broker import Broker, Position, Order, OrderStatus, OrderEvent, OrderBook
 from markets import DataRequest, TickBar, TickEvent, decimal as d
 import threading
 import time
@@ -7,8 +7,8 @@ from queue import Queue, Empty
 import random
 from datetime import datetime
 from sources import YahooData
-from numpy import NaN
 from util import events
+from decimal import Decimal
 
 
 class FakeBroker(Broker):
@@ -17,7 +17,9 @@ class FakeBroker(Broker):
     def __init__(self):
         super().__init__()
         self.queue = Queue()
-        self._worker = Worker(self.queue)
+        self.book = OrderBook()
+        self.latest_price: dict[str, Decimal] = {}
+        self._worker = Worker(self.queue, self.book, self.latest_price)
         self.shutdown_request = False
 
     def start(self):
@@ -43,36 +45,36 @@ class FakeBroker(Broker):
     def _run(self):
         self._worker.run()
 
-    def current_position(self) -> Position:
-        return sum(order.position for order in self._worker.orders)
+    def current_positions(self) -> list[Position]:
+        return [self.book.current_position(symbol) for symbol in self.latest_price.keys()]
 
     @property
     def open_orders(self) -> list[Order]:
-        return [order for order in self._worker.orders if order.status in (OrderStatus.SUBMITTED, OrderStatus.PENDING)]
+        return self.book.open_orders
 
     @property
     def filled_orders(self) -> list[Order]:
-        return [order for order in self._worker.orders if order.status is OrderStatus.FILLED]
+        return self.book.filled_orders
 
-    def p_or_l(self):
-        if not self.filled_orders:
-            return NaN
-        first = self.filled_orders[0]
-        return Order.combined_p_or_l(self.filled_orders, self._worker.latest_price[first.position.symbol])
+    def p_or_l(self, symbol=None):
+        if symbol:
+            return self.book.p_or_l(symbol, self.latest_price[symbol])
+        else:
+            return sum(self.book.p_or_l(symbol, price) for symbol, price in self.latest_price.items())
 
 
 class Worker:
 
-    def __init__(self, queue: Queue):
+    def __init__(self, queue: Queue, book: OrderBook, latest_price: dict[str, Decimal]):
         self.queue = queue
         self.shutdown_request = False
-        self.orders: list[Order] = []
-        self.latest_price = {}
+        self.book = book
+        self.latest_price = latest_price
 
     def cancel_pending_orders(self):
-        for i, order in enumerate(self.orders):
+        for i, order in enumerate(self.book):
             if order.status in (OrderStatus.UNPOSTED, OrderStatus.PENDING):
-                self.orders[i] = update_order_status(order, OrderStatus.CANCELLED)
+                self.book[i] = update_order_status(order, OrderStatus.CANCELLED)
 
     def add_symbol(self, symbol):
         if symbol not in self.latest_price:
@@ -87,7 +89,7 @@ class Worker:
                 pass
             else:
                 self.add_symbol(position.symbol)
-                self.orders.append(Order(position, OrderStatus.PENDING, order_id=len(self.orders)))
+                self.book.append(Order(position, OrderStatus.PENDING, order_id=len(self.book)))
 
             self.update_orders()
 
@@ -124,7 +126,7 @@ class Worker:
         return TickBar(symbol, date, prev_close, d(high), d(low), d(close), d(wap), volume)
 
     def update_orders(self):
-        for i, order in enumerate(self.orders):
+        for i, order in enumerate(self.book):
             if order.status is OrderStatus.UNPOSTED:
                 order = update_order_status(order, OrderStatus.PENDING)
             elif order.status is OrderStatus.PENDING:
@@ -134,7 +136,7 @@ class Worker:
                 filled_at = d(self.latest_price[order.position.symbol])
                 order = order.update_status(OrderStatus.FILLED, filled_at, filled_quantity)
                 order = update_order_status(order, OrderStatus.FILLED)
-            self.orders[i] = order
+            self.book[i] = order
 
 
 def update_order_status(order: Order, status: OrderStatus):

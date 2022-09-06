@@ -75,7 +75,6 @@ class SymbolData:
             self.columns = {label: [] for label in SymbolData.labels}
 
     def append_bar(self, bar: TickBar):
-        # date = datetime.utcfromtimestamp(date) if type(date) is int else date
         self.date_index.append(bar.date)
         self.columns['Open'].append(bar.open)
         self.columns['High'].append(bar.high)

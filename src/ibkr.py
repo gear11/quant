@@ -8,7 +8,7 @@ from ibapi.contract import Contract
 import threading
 import time
 from datetime import datetime
-from broker import Broker, Position, Direction, Order as BrokerOrder, OrderStatus, OrderEvent
+from broker import Broker, Position, Direction, Order as BrokerOrder, OrderStatus, OrderEvent, OrderBook
 import console
 import markets
 from markets import decimal as d
@@ -24,30 +24,30 @@ CONNECTION_ID = 1
 
 class InteractiveBroker(Broker):
 
-    def p_or_l(self):
-        if not self.filled_orders:
-            return numpy.NaN
-        first = self.filled_orders[0]
-        return BrokerOrder.combined_p_or_l(self.filled_orders, self.latest_price[first.position.symbol])
-
-    def current_position(self) -> Position:
-        return sum(order.position for order in self.orders.values() if order.status is OrderStatus.FILLED)
-
     def __init__(self):
         super().__init__()
         self.ib = IBApi(self)
         self.ib.connect('127.0.0.1', SIMULATED_TRADING_PORT, CONNECTION_ID)
         self.symbols = {}
-        self.orders = {}
+        self.book = OrderBook()
         self.latest_price: dict[str, Decimal] = {}
 
     @property
     def open_orders(self) -> list[BrokerOrder]:
-        return [order for order in self.orders.values() if order.status in (OrderStatus.SUBMITTED, OrderStatus.PENDING)]
+        return self.book.open_orders
 
     @property
     def filled_orders(self) -> list[BrokerOrder]:
-        return [order for order in self.orders.values() if order.status is OrderStatus.FILLED]
+        return self.book.filled_orders
+
+    def p_or_l(self, symbol=None):
+        if symbol:
+            return self.book.p_or_l(symbol, self.latest_price[symbol])
+        else:
+            return sum(self.book.p_or_l(symbol, price) for symbol, price in self.latest_price.items())
+
+    def current_positions(self) -> list[Position]:
+        return [self.book.current_position(symbol) for symbol in self.latest_price.keys()]
 
     def start(self):
         print('Starting IB Thread')
@@ -60,8 +60,8 @@ class InteractiveBroker(Broker):
         self.ib.disconnect()
 
     def cancel_pending_orders(self):
-        for order in self.orders.values():
-            if order.status == OrderStatus.PENDING:
+        for order in self.book:
+            if order.status in (OrderStatus.UNPOSTED, OrderStatus.PENDING):
                 console.announce(f'Cancelling pending order {order}')
                 self.ib.cancelOrder(order.order_id)
 
@@ -92,7 +92,7 @@ class InteractiveBroker(Broker):
 
         order_id = self.ib.next_order_id()
         broker_order = BrokerOrder(position, OrderStatus.PENDING, order_id)
-        self.orders[order_id] = broker_order
+        self.book.append(broker_order)
         self.ib.placeOrder(order_id, contract_for(position.symbol), order)
         return broker_order
 
@@ -121,13 +121,14 @@ class InteractiveBroker(Broker):
     def _on_order_status(self, order_id, status, filled: float, avg_fill_price: float):
         status = to_order_status(status)
         console.warn(f'Received open order status: {order_id} {status} {filled} {avg_fill_price} {status}')
-        if order_id in self.orders:
+        try:
+            order, index = self.book.by_order_id(order_id)
             if type(filled) is float and not filled.is_integer():
                 console.warn(f'Fractional order fill!')
-            order = self.orders[order_id].update_status(status, d(avg_fill_price), filled)
-            self.orders[order_id] = order
+            order = order.update_status(status, d(avg_fill_price), filled)
+            self.book[index] = order
             events.emit(OrderEvent(order))
-        else:
+        except KeyError:
             console.warn(f'Received unknown open order status: {order_id} {status} {filled} {avg_fill_price}')
 
 
