@@ -8,26 +8,29 @@ __license__ = "Apache 2.0"
 
 import argparse
 from ibkr import InteractiveBroker
-from broker import Broker, BrokerListener, Position, Direction, Order
-from markets import Bar
+from broker import Broker, Position, Direction, Order, OrderEvent
 import console
 import traceback
 from functools import partial
 import time
 from fakebroker import FakeBroker
+from util import events
+from markets import TickEvent, TickBar
+import logging as log
 
 
-class Trader(BrokerListener):
+class Trader:
     def __init__(self, position: Position, broker: Broker):
-        console.announce('Starting the Broker interface')
         self.broker = broker
-        self.broker.start()
         self.prev_close = 0
         self.prev_wap = 0
         self.initial_position = position
         self.subscriptions = set()
         self.is_open = False  # Did we open a position?
         self.is_closed = False  # Did we close out our open position?
+
+        events.observe(TickEvent, lambda event: self.on_bar(event.tick_bar))
+        events.observe(OrderEvent, lambda event: self.on_order_status(event.order))
 
     def open_position(self):
         if self.is_open:
@@ -40,12 +43,11 @@ class Trader(BrokerListener):
 
     def listen(self, symbol):
         if symbol not in self.subscriptions:
-            self.broker.listen(symbol, self)
             self.broker.subscribe_real_time(symbol)
             self.subscriptions.add(symbol)
 
-    def on_bar(self, symbol, bar: Bar):
-        msg = console.render_bar(symbol, bar, self.prev_close, self.prev_wap)
+    def on_bar(self, bar: TickBar):
+        msg = console.render_bar(bar, self.prev_close, self.prev_wap)
         if self.is_open:
             msg += console.wrap(f' [P/L: ${self.broker.p_or_l()}]', console.Colors.BLUE)
         print(msg)
@@ -77,6 +79,8 @@ class Trader(BrokerListener):
     def reduce_position(self, quantity: int):
         if not self.has_open_position():
             console.error('No position to reduce!')
+        elif quantity < 1:
+            console.error('Cannot reduce by a negative!')
         else:
             current_pos = self.broker.current_position()
             if current_pos.quantity < quantity:
@@ -137,6 +141,9 @@ def main():
                         const=True, default=False,
                         help='Use the fake broker')
     args = parser.parse_args()
+
+    log.basicConfig(level=log.DEBUG)
+    log.getLogger('ibapi').setLevel(log.WARN)
 
     if args.fake:
         console.announce('Using FAKE broker')

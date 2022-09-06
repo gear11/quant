@@ -8,11 +8,14 @@ from ibapi.contract import Contract
 import threading
 import time
 from datetime import datetime
-from broker import Broker, BrokerListener, Position, Direction, Order as BrokerOrder, OrderStatus
+from broker import Broker, Position, Direction, Order as BrokerOrder, OrderStatus, OrderEvent
 import console
 import markets
-from decimal import Decimal
+from markets import decimal as d
 import timer
+from util import events
+import numpy
+from decimal import Decimal
 
 LIVE_TRADING_PORT = 7496
 SIMULATED_TRADING_PORT = 7497
@@ -22,7 +25,10 @@ CONNECTION_ID = 1
 class InteractiveBroker(Broker):
 
     def p_or_l(self):
-        pass
+        if not self.filled_orders:
+            return numpy.NaN
+        first = self.filled_orders[0]
+        return BrokerOrder.combined_p_or_l(self.filled_orders, self.latest_price[first.position.symbol])
 
     def current_position(self) -> Position:
         return sum(order.position for order in self.orders.values() if order.status is OrderStatus.FILLED)
@@ -33,6 +39,7 @@ class InteractiveBroker(Broker):
         self.ib.connect('127.0.0.1', SIMULATED_TRADING_PORT, CONNECTION_ID)
         self.symbols = {}
         self.orders = {}
+        self.latest_price: dict[str, Decimal] = {}
 
     @property
     def open_orders(self) -> list[BrokerOrder]:
@@ -58,16 +65,6 @@ class InteractiveBroker(Broker):
                 console.announce(f'Cancelling pending order {order}')
                 self.ib.cancelOrder(order.order_id)
 
-    def listen(self, symbol: str, listener: BrokerListener):
-        symbol = symbol.upper()
-        try:
-            self._find_id(symbol)
-        except ValueError:
-            symbol_id = len(self.symbols)
-            self.symbols[symbol_id] = (symbol_id, symbol, listener)
-        else:
-            console.error(f'Already listening to {symbol}')
-
     def subscribe_real_time(self, symbol):
         console.announce(f'Subscribing to realtime data for {symbol}')
         contract = contract_for(symbol)
@@ -76,7 +73,6 @@ class InteractiveBroker(Broker):
 
     def get_history(self, request: markets.DataRequest):  # , start: datetime, end: datetime = None):
         contract = contract_for(request.symbol)
-        # query_time = (datetime.today() - timedelta(days=180)).strftime("%Y%m%d %H:%M:%S")
         query_time = request.end.strftime("%Y%m%d %H:%M:%S")
         duration = timer.to_time_string(request.end - request.start)
 
@@ -101,10 +97,12 @@ class InteractiveBroker(Broker):
         return broker_order
 
     def _find_id(self, symbol):
-        for symbol_id, a_symbol, listener in self.symbols.values():
+        for symbol_id, a_symbol in self.symbols.items():
             if a_symbol == symbol:
                 return symbol_id
-        raise ValueError(f'No such symbol {symbol}')
+        symbol_id = len(self.symbols)
+        self.symbols[symbol_id] = symbol
+        return symbol_id
 
     def _on_bar_update(self, req_id: TickerId, date, open_: float, high: float, low: float, close: float,
                        volume: int, wap: float):
@@ -112,20 +110,23 @@ class InteractiveBroker(Broker):
             date = datetime.utcfromtimestamp(date)
         elif type(date) is str:
             date = datetime.strptime(date, '%Y%m%d')
-        _, symbol, listener = self.symbols[req_id]
-        wap = Decimal(wap) if wap else None
-        bar = markets.Bar(date, Decimal(open_), Decimal(high), Decimal(low), Decimal(close), wap, volume)
-        listener.on_bar(symbol, bar)
 
-    def _on_order_status(self, order_id, status, filled, avg_fill_price):
+        open_, high, low, close, wap = d(open_), d(high), d(low), d(close), d(wap)
+
+        symbol = self.symbols[req_id]
+        self.latest_price[symbol] = close
+        tick_bar = markets.TickBar(symbol, date, open_, high, low, close, wap, volume)
+        events.emit(markets.TickEvent(tick_bar))
+
+    def _on_order_status(self, order_id, status, filled: float, avg_fill_price: float):
         status = to_order_status(status)
         console.warn(f'Received open order status: {order_id} {status} {filled} {avg_fill_price} {status}')
         if order_id in self.orders:
-            cur_order = self.orders[order_id]
-            new_order = cur_order.update_status(status, avg_fill_price, filled)
-            for _, _, listener in self.symbols.values():
-                listener.on_order_status(new_order)
-            self.orders[order_id] = new_order
+            if type(filled) is float and not filled.is_integer():
+                console.warn(f'Fractional order fill!')
+            order = self.orders[order_id].update_status(status, d(avg_fill_price), filled)
+            self.orders[order_id] = order
+            events.emit(OrderEvent(order))
         else:
             console.warn(f'Received unknown open order status: {order_id} {status} {filled} {avg_fill_price}')
 

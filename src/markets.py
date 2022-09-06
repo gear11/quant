@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import pandas as pd
 from decimal import Decimal
-
 from typing import NamedTuple
 from datetime import datetime
 from enum import Enum
 import dateparser
+from util.events import Event
 
 
 class Resolution(Enum):
@@ -45,7 +45,8 @@ def is_forex(symbol):
     return symbol.upper() in ('EUR', 'BTC')
 
 
-class Bar(NamedTuple):
+class TickBar(NamedTuple):
+    symbol: str
     date: datetime
     open: Decimal
     high: Decimal
@@ -53,6 +54,11 @@ class Bar(NamedTuple):
     close: Decimal
     wap: Decimal
     volume: int
+
+
+class TickEvent(Event):
+    def __init__(self, tick_bar: TickBar):
+        self.tick_bar = tick_bar
 
 
 class SymbolData:
@@ -68,7 +74,7 @@ class SymbolData:
             self.date_index = []
             self.columns = {label: [] for label in SymbolData.labels}
 
-    def append_bar(self, bar: Bar):
+    def append_bar(self, bar: TickBar):
         # date = datetime.utcfromtimestamp(date) if type(date) is int else date
         self.date_index.append(bar.date)
         self.columns['Open'].append(bar.open)
@@ -86,4 +92,5 @@ class SymbolData:
         return len(self.date_index)
 
 
-
+def decimal(num) -> Decimal | None:
+    return Decimal('%.2f' % num) if num is not None else None

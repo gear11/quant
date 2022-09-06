@@ -1,10 +1,9 @@
-from markets import DataRequest, SymbolData, Bar
+from markets import DataRequest, SymbolData, TickEvent
 import pandas_datareader as pdr
 from ibkr import InteractiveBroker
-from broker import BrokerListener
 import time
 from datetime import datetime, timedelta
-from broker import Order
+from util import events
 
 
 class YahooData:
@@ -27,18 +26,12 @@ class IBKRData:
 
     @staticmethod
     def fetch(request: DataRequest):
+
+        data = SymbolData(request.symbol)
+        events.observe(TickEvent, lambda event: data.append_bar(event.tick_bar))
+
         broker = InteractiveBroker()
         broker.start()
-        data = SymbolData(request.symbol)
-
-        class Listener(BrokerListener):
-            def on_order_status(self, order: Order):
-                pass
-
-            def on_bar(self, symbol, bar: Bar):
-                data.append_bar(bar)
-
-        broker.listen(request.symbol, Listener())
         broker.get_history(request)
 
         while len(data) < request.size_in_days():

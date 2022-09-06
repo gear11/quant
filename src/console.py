@@ -2,7 +2,7 @@
  Functions for colored and bold output to the console
 """
 from decimal import Decimal
-from markets import Bar
+from markets import TickBar
 from pandas import DataFrame
 import datetime
 import dateparser
@@ -53,11 +53,11 @@ def render_val(value, comparison=None, bold=False):
     return f'{start_color}{bold}{val_str}{Colors.END}'
 
 
-def render_bar(symbol: str, bar: Bar, prev_close=None, prev_wap=None):
+def render_bar(bar: TickBar, prev_close=None, prev_wap=None):
     date_str = bar.date.strftime("%Y-%m-%d %H:%M:%S")
     close_str = render_val(bar.close, prev_close if prev_close else bar.open)
     wap_str = render_val(bar.wap, prev_wap if prev_wap else bar.wap, bold=True)
-    return f'{date_str} {symbol} {wap_str}' \
+    return f'{date_str} {bar.symbol} {wap_str}' \
            f' O{render_val(bar.open)}-H{render_val(bar.high, bar.open)}' \
            f'-L{render_val(bar.low, bar.open)}-C{close_str}' \
            f' {bar.volume: >4}'
@@ -73,8 +73,8 @@ def render_bar_data(symbol, date, open_, high, low, close, volume, ref_price, pr
            f' {volume: >4}'
 
 
-def print_bar(symbol: str, bar: Bar, prev_close=None, prev_ref_price=None):
-    print(render_bar(symbol, bar, prev_close, prev_ref_price))
+def print_bar(symbol: str, bar: TickBar, prev_close=None, prev_ref_price=None):
+    print(render_bar(bar, prev_close, prev_ref_price))
 
 
 def print_data_frame(symbol, df: DataFrame):

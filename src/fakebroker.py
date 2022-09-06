@@ -1,14 +1,14 @@
 import console
-from broker import Broker, Position, Order, BrokerListener, OrderStatus
-from markets import DataRequest, Bar
+from broker import Broker, Position, Order, OrderStatus, OrderEvent
+from markets import DataRequest, TickBar, TickEvent, decimal as d
 import threading
 import time
 from queue import Queue, Empty
 import random
 from datetime import datetime
-from decimal import Decimal
 from sources import YahooData
 from numpy import NaN
+from util import events
 
 
 class FakeBroker(Broker):
@@ -17,9 +17,8 @@ class FakeBroker(Broker):
     def __init__(self):
         super().__init__()
         self.queue = Queue()
+        self._worker = Worker(self.queue)
         self.shutdown_request = False
-        self.listeners: list[BrokerListener] = []
-        self._worker = Worker(self.queue, self.listeners)
 
     def start(self):
         print('Starting Fake Broker Thread')
@@ -31,9 +30,6 @@ class FakeBroker(Broker):
 
     def cancel_pending_orders(self):
         self._worker.cancel_pending_orders()
-
-    def listen(self, symbol: str, listener: BrokerListener):
-        self.listeners.append(listener)
 
     def subscribe_real_time(self, symbol):
         self._worker.add_symbol(symbol)
@@ -62,31 +58,26 @@ class FakeBroker(Broker):
         if not self.filled_orders:
             return NaN
         first = self.filled_orders[0]
-        return Order.combined_p_or_l(self.filled_orders, self._worker.prices[first.position.symbol])
+        return Order.combined_p_or_l(self.filled_orders, self._worker.latest_price[first.position.symbol])
 
 
 class Worker:
 
-    def __init__(self, queue: Queue, listeners: list[BrokerListener]):
+    def __init__(self, queue: Queue):
         self.queue = queue
-        self.listeners = listeners
         self.shutdown_request = False
         self.orders: list[Order] = []
-        self.prices = {}
+        self.latest_price = {}
 
     def cancel_pending_orders(self):
-        new_orders = []
-        for order in self.orders:
-            new_status = order.status
+        for i, order in enumerate(self.orders):
             if order.status in (OrderStatus.UNPOSTED, OrderStatus.PENDING):
-                new_status = OrderStatus.CANCELLED
-            new_orders.append(order.update_status(new_status))
-        self.orders = new_orders
+                self.orders[i] = update_order_status(order, OrderStatus.CANCELLED)
 
     def add_symbol(self, symbol):
-        if symbol not in self.prices:
+        if symbol not in self.latest_price:
             console.announce(f'Looking up price of {symbol} from Yahoo')
-            self.prices[symbol] = YahooData.current_price(symbol)
+            self.latest_price[symbol] = YahooData.current_price(symbol)
 
     def run(self):
         while not self.shutdown_request:
@@ -104,27 +95,25 @@ class Worker:
                 self.update_prices()
 
     def update_prices(self):
-        for symbol, price in self.prices.items():
-            bar = self.next_bar(price)
-            self.prices[symbol] = bar.close
-            for listener in self.listeners:
-                listener.on_bar(symbol, bar)
+        for symbol, price in self.latest_price.items():
+            bar = self.next_bar(symbol, price)
+            self.latest_price[symbol] = bar.close
+            events.emit(TickEvent(bar))
 
     def get_history(self, request: DataRequest):
         days = (request.end - request.start).days
         self.add_symbol(request.symbol)
-        price = self.prices[request.symbol]
+        price = self.latest_price[request.symbol]
         bars = []
         for _ in range(days):
-            bar = self.next_bar(price)
+            bar = self.next_bar(request.symbol, price)
             bars.append(bar)
             price = bar.close
 
         for bar in reversed(bars):
-            for listener in self.listeners:
-                listener.on_bar(request.symbol, bar)
+            events.emit(TickEvent(bar))
 
-    def next_bar(self, prev_close):  # noqa No reason to make this static
+    def next_bar(self, symbol, prev_close) -> TickBar:  # noqa No reason to make this static
         date = datetime.now()
         price = float(prev_close)
         high = random.uniform(price, price * 1.01)
@@ -132,31 +121,24 @@ class Worker:
         close = random.uniform(low, high)
         volume = int(random.uniform(300, 600))
         wap = close
-        return Bar(date, prev_close, to_dec(high), to_dec(low), to_dec(close), to_dec(wap), volume)
+        return TickBar(symbol, date, prev_close, d(high), d(low), d(close), d(wap), volume)
 
     def update_orders(self):
-        new_orders = []
-        for order in self.orders:
-            new_status = order.status
-            filled_at = None
-            filled_quantity = None
+        for i, order in enumerate(self.orders):
             if order.status is OrderStatus.UNPOSTED:
-                new_status = OrderStatus.PENDING
+                order = update_order_status(order, OrderStatus.PENDING)
             elif order.status is OrderStatus.PENDING:
-                new_status = OrderStatus.SUBMITTED
+                order = update_order_status(order, OrderStatus.SUBMITTED)
             elif order.status is OrderStatus.SUBMITTED:
-                new_status = OrderStatus.FILLED
                 filled_quantity = order.position.quantity
-                filled_at = to_dec(self.prices[order.position.symbol])
-            new_order = order.update_status(new_status, filled_at, filled_quantity)
-            new_orders.append(new_order)
-
-            if new_status != order.status:
-                for listener in self.listeners:
-                    listener.on_order_status(new_order)
-
-        self.orders = new_orders
+                filled_at = d(self.latest_price[order.position.symbol])
+                order = order.update_status(OrderStatus.FILLED, filled_at, filled_quantity)
+                order = update_order_status(order, OrderStatus.FILLED)
+            self.orders[i] = order
 
 
-def to_dec(num):
-    return Decimal('%.2f' % num)
+def update_order_status(order: Order, status: OrderStatus):
+    order = order.update_status(status)
+    events.emit(OrderEvent(order))
+    return order
+

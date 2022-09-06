@@ -1,8 +1,9 @@
 from enum import Enum
 from typing import NamedTuple
 from decimal import Decimal
-from markets import Bar, DataRequest
+from markets import DataRequest
 from abc import abstractmethod, ABC
+from util.events import Event
 
 
 class Direction(Enum):
@@ -59,15 +60,15 @@ class Order:
         self.filled_at = filled_at
         self.filled_quantity = filled_quantity
 
-    def update_status(self, status: OrderStatus, filled_at=None, filled_quantity=None) -> 'Order':
+    def update_status(self, status: OrderStatus, filled_at: Decimal = None, filled_quantity=None) -> 'Order':
         filled_at = filled_at or self.filled_at
         filled_quantity = filled_quantity or self.filled_quantity
         return Order(self.position, status, self.order_id, filled_at, filled_quantity)
 
-    def p_or_l(self, current_price):
+    def p_or_l(self, current_price: Decimal):
         if self.status is OrderStatus.UNPOSTED:
             return Decimal(0)
-        return Decimal((current_price - self.filled_at) * self.filled_quantity * self.position.direction.value) # noqa PyCharm can't do Enum.value
+        return Decimal((current_price - self.filled_at) * Decimal(self.filled_quantity) * self.position.direction.value) # noqa PyCharm can't do Enum.value
 
     def __str__(self):
         msg = f'{self.order_id} {self.position} {self.status.name}'
@@ -80,15 +81,10 @@ class Order:
         return sum(order.p_or_l(current_price) for order in orders)
 
 
-class BrokerListener(ABC):
+class OrderEvent(Event):
 
-    @abstractmethod
-    def on_bar(self, symbol, bar: Bar):
-        """Load in the file for extracting text."""
-
-    @abstractmethod
-    def on_order_status(self, order: Order):
-        """Load in the file for extracting text."""
+    def __init__(self, order: Order):
+        self.order = order
 
 
 class Broker(ABC):
@@ -114,10 +110,6 @@ class Broker(ABC):
     @abstractmethod
     def cancel_pending_orders(self):
         """Cancels pending orders"""
-
-    @abstractmethod
-    def listen(self, symbol: str, listener: BrokerListener):
-        """Adds the listener to events"""
 
     @abstractmethod
     def subscribe_real_time(self, symbol):
