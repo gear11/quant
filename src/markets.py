@@ -6,7 +6,7 @@ from typing import NamedTuple
 from datetime import datetime
 from enum import Enum
 import dateparser
-from util.events import Event
+from util.events import Event, observe
 
 
 class Resolution(Enum):
@@ -93,3 +93,41 @@ class SymbolData:
 
 def decimal(num) -> Decimal | None:
     return Decimal('%.2f' % num) if num is not None else None
+
+
+class WatchList:
+    """
+    A dictionary-like object for storing most recent price (bar) data.
+    Auto-subscribed to tick bar events
+    """
+    def __init__(self):
+        self.last_price: dict[str, TickBar] = {}
+        observe(TickEvent, lambda event: self.__setitem__(event.tick_bar.symbol, event.tick_bar))
+
+    def __setitem__(self, symbol, last_price: TickBar):
+        self.last_price[symbol] = last_price
+
+    def __getitem__(self, symbol):
+        return self.last_price[symbol]
+
+    def __len__(self):
+        return self.last_price.__len__()
+
+    def __contains__(self, item):
+        return self.last_price.__contains__(item)
+
+    def items(self):
+        return self.last_price.items()
+
+    def last_close(self, symbol):
+        return self.last_price[symbol].close
+
+    def symbols(self):
+        return self.last_price.keys()
+
+    def add_symbol(self, symbol, price=0):
+        price = decimal(price)
+        print(f'ADDING {symbol} AT {price}')
+        symbol = symbol.upper()
+        if symbol not in self.last_price:
+            self.last_price[symbol] = TickBar(symbol, datetime.now(), price, price, price, price, price, 0)

@@ -1,9 +1,5 @@
 import time
-from datetime import timedelta
-
-
-def to_time_string(delta: timedelta):
-    return f'{delta.days} D'
+from collections.abc import Iterable
 
 
 class Timer:
@@ -41,6 +37,12 @@ class Timer:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.step('Timer({0}) took {1:.3f}s')
+
+
+def timed_release(iterable: Iterable, delay: float):
+    for item in iterable:
+        yield item
+        time.sleep(delay)
 
 
 def main():

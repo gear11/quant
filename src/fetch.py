@@ -10,7 +10,7 @@ from sources import YahooData, IBKRData
 from markets import DataRequest, Resolution
 from pandas import DataFrame
 from functools import partial
-from timer import Timer
+from util.timeutil import Timer
 import console
 
 

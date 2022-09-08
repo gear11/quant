@@ -54,6 +54,7 @@ def render_val(value, comparison=None, bold=False):
 
 
 def render_bar(bar: TickBar, prev_close=None, prev_wap=None):
+    render_bar_data(bar.symbol, bar.date, bar.open, bar.close, bar.wap, bar.volume, prev_close, prev_wap)
     date_str = bar.date.strftime("%Y-%m-%d %H:%M:%S")
     close_str = render_val(bar.close, prev_close if prev_close else bar.open)
     wap_str = render_val(bar.wap, prev_wap if prev_wap else bar.wap, bold=True)
@@ -63,7 +64,7 @@ def render_bar(bar: TickBar, prev_close=None, prev_wap=None):
            f' {bar.volume: >4}'
 
 
-def render_bar_data(symbol, date, open_, high, low, close, volume, ref_price, prev_close=None, prev_ref_price=None):
+def render_bar_data(symbol, date, open_, high, low, close, ref_price, volume, prev_close=None, prev_ref_price=None):
     date_str = date.strftime("%Y-%m-%d %H:%M:%S")
     close_str = render_val(close, prev_close if prev_close else open_)
     ref_price_str = render_val(ref_price, prev_ref_price if prev_ref_price else ref_price, bold=True)
@@ -71,10 +72,6 @@ def render_bar_data(symbol, date, open_, high, low, close, volume, ref_price, pr
            f' O{render_val(open_)}-H{render_val(high, open_)}' \
            f'-L{render_val(low, open_)}-C{close_str}' \
            f' {volume: >4}'
-
-
-def print_bar(symbol: str, bar: TickBar, prev_close=None, prev_ref_price=None):
-    print(render_bar(bar, prev_close, prev_ref_price))
 
 
 def print_data_frame(symbol, df: DataFrame):

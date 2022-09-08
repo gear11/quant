@@ -15,8 +15,9 @@ from functools import partial
 import time
 from fakebroker import FakeBroker
 from util import events
-from markets import TickEvent, TickBar
+from markets import TickEvent, TickBar, WatchList
 import logging as log
+from sources import RandomMarketData, YahooData, IBKRMarketData
 
 
 class Trader:
@@ -26,7 +27,6 @@ class Trader:
         self.prev_wap = 0
         self.initial_position = position
         self.symbol = position.symbol
-        self.subscriptions = set()
         self.is_open = False  # Did we open a position?
         self.is_closed = False  # Did we close out our open position?
 
@@ -41,11 +41,6 @@ class Trader:
         console.announce(f'Opening position: {self.initial_position}')
         self.broker.place_order(self.initial_position)
         self.is_open = True
-
-    def listen(self, symbol):
-        if symbol not in self.subscriptions:
-            self.broker.subscribe_real_time(symbol)
-            self.subscriptions.add(symbol)
 
     def on_bar(self, bar: TickBar):
         msg = console.render_bar(bar, self.prev_close, self.prev_wap)
@@ -138,27 +133,48 @@ def main():
     parser.add_argument('-f', dest='fake', action='store_const',
                         const=True, default=False,
                         help='Use the fake broker')
+    parser.add_argument('-s', dest='source', type=str, help='Source of market data', choices=['live', 'random', 'hist'],
+                        default='live')
     args = parser.parse_args()
 
     log.basicConfig(level=log.DEBUG)
     log.getLogger('ibapi').setLevel(log.WARN)
 
-    if args.fake:
-        console.announce('Using FAKE broker')
-        broker = FakeBroker()
-    else:
-        console.announce('Using Interactive Broker')
-        broker = InteractiveBroker()
-    console.announce('Starting the Broker interface')
-    broker.start()
+    watchlist = WatchList()
+    broker = init_broker(args, watchlist)
+    init_market_data(args, watchlist)
 
     direction = Direction.LONG if args.direction == 'buy' else Direction.SHORT
     position = Position(args.symbol.upper(), direction, args.quantity)
     trader = Trader(position, broker)
-    trader.listen(position.symbol)
     if not args.delay:
         trader.open_position()
     run_command_loop(trader)
+
+
+def init_broker(args, watchlist):
+    if args.fake:
+        console.announce('Using FAKE broker')
+        broker = FakeBroker(watchlist)
+    else:
+        console.announce('Using Interactive Broker')
+        broker = InteractiveBroker(watchlist)
+    console.announce('Starting the Broker interface')
+    broker.start()
+    return broker
+
+
+def init_market_data(args, watchlist):
+    symbol = args.symbol.upper()
+
+    if args.source == 'random':
+        price = YahooData.current_price(symbol)
+        console.announce(f'Looking up price of {symbol} from Yahoo: {price}')
+        watchlist.add_symbol(symbol, price)
+        RandomMarketData(watchlist).start()
+    elif args.source == 'live':
+        watchlist.add_symbol(symbol)
+        IBKRMarketData(watchlist).start()
 
 
 def run_command_loop(trader: Trader):

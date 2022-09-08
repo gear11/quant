@@ -1,10 +1,9 @@
 from enum import Enum
 from typing import NamedTuple
 from decimal import Decimal
-from markets import DataRequest
+from markets import WatchList
 from abc import abstractmethod, ABC
 from util.events import Event
-from numpy import NaN
 
 
 class Direction(Enum):
@@ -60,6 +59,9 @@ class Order:
         self.order_id = order_id
         self.filled_at = filled_at
         self.filled_quantity = filled_quantity
+
+    def is_cancellable(self):
+        return self.status in (OrderStatus.UNPOSTED, OrderStatus.PENDING)
 
     def update_status(self, status: OrderStatus, filled_at: Decimal = None, filled_quantity=None) -> 'Order':
         filled_at = filled_at or self.filled_at
@@ -132,15 +134,26 @@ class OrderEvent(Event):
 
 class Broker(ABC):
 
-    @property
-    @abstractmethod
-    def open_orders(self) -> list[Order]:
-        """Returns all open orders"""
+    def __init__(self, watchlist: WatchList):
+        self.book = OrderBook()
+        self.watchlist = watchlist
+
+    def current_positions(self) -> list[Position]:
+        return [self.book.current_position(symbol) for symbol in self.watchlist.symbols()]
 
     @property
-    @abstractmethod
+    def open_orders(self) -> list[Order]:
+        return self.book.open_orders
+
+    @property
     def filled_orders(self) -> list[Order]:
-        """Returns all filled orders"""
+        return self.book.filled_orders
+
+    def p_or_l(self, symbol=None):
+        if symbol:
+            return self.book.p_or_l(symbol, self.watchlist[symbol].close)
+        else:
+            return sum(self.book.p_or_l(symbol, bar.close) for symbol, bar in self.watchlist.items())
 
     @abstractmethod
     def start(self):
@@ -155,21 +168,6 @@ class Broker(ABC):
         """Cancels pending orders"""
 
     @abstractmethod
-    def subscribe_real_time(self, symbol):
-        """Subscribe to realtime events for the given symbol"""
-
-    @abstractmethod
-    def get_history(self, request: DataRequest):  # , start: datetime, end: datetime = None):
-        """Get history for the given symbol"""
-
-    @abstractmethod
     def place_order(self, position: Position) -> Order:
         """Places an order to acquire the given position"""
 
-    @abstractmethod
-    def current_positions(self) -> list[Position]:
-        """Computes the current position based on order history"""
-
-    @abstractmethod
-    def p_or_l(self, symbol=None):
-        """Returns cumulative P or L of filled orders based on fill price and current price"""
