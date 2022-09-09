@@ -1,19 +1,25 @@
-from markets import DataRequest, SymbolData, TickEvent, TickBar, decimal as d, WatchList
+from markets import DataRequest, SymbolData, TickEvent, TickBar, decimal as d, WatchList, Resolution
 import pandas_datareader as pdr
-from ibkr import InteractiveBroker, IBApi
+from ibkr import IBApi
 import time
 from datetime import datetime, timedelta
 from util import events
 import random
 import threading
 import console
+from util.timeutil import Waiter
 
 
 class YahooData:
 
+    intervals = {Resolution.DAY: 'd', Resolution.WEEK: 'w', Resolution.MONTH: 'm'}
+
     @staticmethod
     def fetch(request: DataRequest):
-        df = pdr.get_data_yahoo(request.symbol, start=request.start, end=request.end)
+        if request.resolution not in YahooData.intervals:
+            raise ValueError('Only DAY WEEK and MONTH resolutions are supported')
+        interval = YahooData.intervals[request.resolution]
+        df = pdr.get_data_yahoo(request.symbol, start=request.start, end=request.end, interval=interval)
         df = df[['Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']]
         return df
 
@@ -33,13 +39,13 @@ class IBKRData:
         data = SymbolData(request.symbol)
         events.observe(TickEvent, lambda event: data.append_bar(event.tick_bar))
 
-        broker = InteractiveBroker(WatchList())
-        broker.start()
-        broker.get_history(request)
+        IBApi.instance().start()
+        waiter = Waiter(5)
+        IBApi.instance().req_historical_data(request, waiter)
 
-        while len(data) < request.size_in_days():
+        while waiter.still_waiting():
             time.sleep(.1)
-        broker.shutdown()
+        IBApi.instance().shutdown()
         return data.data_frame
 
 

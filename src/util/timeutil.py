@@ -2,6 +2,20 @@ import time
 from collections.abc import Iterable
 
 
+class Waiter:
+
+    def __init__(self, max_wait=None):
+        self.waiting = True
+        self.max_wait = max_wait
+        self.start = time.perf_counter()
+
+    def __call__(self, *args, **kwargs):
+        self.waiting = False
+
+    def still_waiting(self):
+        return self.waiting or time.perf_counter() - self.start >= self.max_wait
+
+
 class Timer:
 
     DEFAULT_MESSAGE = 'Timer({0}) {1:.3f}s step ({2:.3f}s total)'

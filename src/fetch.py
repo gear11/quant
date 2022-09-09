@@ -21,11 +21,11 @@ _fetchers = {
 
 
 def fetch(source: str, symbol: str, start: str, end='today', resolution=Resolution.DAY) -> DataFrame:
-    start = dateparser.parse(start)
+    start = dateparser.parse(start, settings={'TIMEZONE': 'US/Eastern'})
     if start is None:
         raise IOError(f'Unrecognized start date: {start}')
 
-    end = dateparser.parse(end)
+    end = dateparser.parse(end, settings={'TIMEZONE': 'US/Eastern'})
     if end is None:
         raise IOError(f'Unrecognized end date: {end}')
 
@@ -48,19 +48,31 @@ def main():
     parser.add_argument('symbols', nargs='+', help='Symbols to retrieve')
     parser.add_argument('-F', dest='format', type=str, default='csv', help='Output format, default to CSV')
     parser.add_argument('-f', dest='file', type=str, help='Output to a named file')
-    parser.add_argument('-r', dest='resolution', type=Resolution, help='Resolution type', default=Resolution.DAY)
+    resolutions = argconv(M=Resolution.MONTH, w=Resolution.WEEK, d=Resolution.DAY, m=Resolution.MINUTE, f=Resolution.FIVE_SEC)
+    parser.add_argument('-r', dest='resolution', type=resolutions, help='Resolution type', default=Resolution.DAY)
     args = parser.parse_args()
 
     with Timer('fetch'):
         data_frames = []
         for symbol in args.symbols:
             symbol = symbol.upper()
-            data_frames.append(fetch(args.source, symbol, args.start, args.end))
+            data_frames.append(fetch(args.source, symbol, args.start, args.end, args.resolution))
     for index, df in enumerate(data_frames):
         # print(f'{df.shape[0]} {request.resolution.name.lower()}(s) of data for {args.symbol[index]}:')
         print(f'{df.shape[0]} days(s) of data for {args.symbols[index]}:')
         # print(df)
         console.print_data_frame(args.symbols[index], df)
+
+
+def argconv(**convs):
+    def parse_argument(arg):
+        if arg in convs:
+            return convs[arg]
+        else:
+            msg = "invalid choice: {!r} (choose from {})"
+            choices = ", ".join(sorted(repr(choice) for choice in convs.keys()))
+            raise argparse.ArgumentTypeError(msg.format(arg, choices))
+    return parse_argument
 
 
 if __name__ == "__main__":

@@ -75,7 +75,12 @@ def render_bar_data(symbol, date, open_, high, low, close, ref_price, volume, pr
 
 
 def print_data_frame(symbol, df: DataFrame):
+    prev_close = None
+    prev_ref_price = None
     for index, row in df.iterrows():
         date = index if type(index) is datetime else dateparser.parse(str(index))
         args = [row[label] for label in df]
+        args.extend([prev_close, prev_ref_price])
         print(render_bar_data(symbol.upper(), date, *args))
+        prev_close = row['Close']
+        prev_ref_price = row[4]

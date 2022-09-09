@@ -2,7 +2,9 @@
  Interactive Broker API Wrapper and Broker based on that API
 """
 from ibapi.client import EClient
+from ibapi.commission_report import CommissionReport
 from ibapi.common import TickerId, BarData
+from ibapi.execution import Execution
 from ibapi.wrapper import EWrapper, OrderId, Order
 from ibapi.contract import Contract
 import threading
@@ -11,7 +13,7 @@ from datetime import datetime, timedelta
 from broker import Broker, Position, Direction, Order as BrokerOrder, OrderStatus, OrderEvent
 import console
 import markets
-from markets import decimal as d
+from markets import decimal as d, Resolution
 from util import events
 import logging as log
 from util.bidict import Bidict
@@ -39,15 +41,6 @@ class InteractiveBroker(Broker):
             if order.is_cancellable():
                 console.announce(f'Cancelling pending order {order}')
                 self.ib.cancelOrder(order.order_id)
-
-    def get_history(self, request: markets.DataRequest):  # , start: datetime, end: datetime = None):
-        contract = contract_for(request.symbol)
-        query_time = request.end.strftime("%Y%m%d %H:%M:%S")
-        duration = to_time_string(request.end - request.start)
-
-        what_to_show = 'MIDPOINT' if markets.is_forex(request.symbol) else 'TRADES'
-        self.ib.reqHistoricalData(self._find_id(request.symbol), contract, query_time, duration, "1 day", what_to_show,
-                                  1, 1, False, [])
 
     def place_order(self, position: Position) -> BrokerOrder:
         order = self.ib.place_order(position, self.on_order_status)
@@ -101,6 +94,7 @@ class IBApi(EWrapper, EClient):
         self.next_symbol_id = 0
         self.order_listeners = {}
         self.connect('127.0.0.1', SIMULATED_TRADING_PORT, CONNECTION_ID)
+        self.callbacks = {}
 
     def start(self):
         if not self.ready:
@@ -155,9 +149,36 @@ class IBApi(EWrapper, EClient):
     def error(self, req_id: TickerId, error_code: int, error_str: str):
         log.error(f'ERROR: {req_id} {error_code}: {error_str} ')
 
+    def req_historical_data(self, request: markets.DataRequest, callback: Callable):
+        contract = contract_for(request.symbol)
+        query_time = request.end.strftime("%Y%m%d %H:%M:%S")
+        duration = to_time_string(request.end - request.start)
+        bar_size = self.bar_size(request.resolution)
+        what_to_show = 'MIDPOINT' if markets.is_forex(request.symbol) else 'TRADES'
+        req_id = self.id_for(request.symbol)
+        self.callbacks[req_id] = callback
+        self.reqHistoricalData(req_id, contract, query_time, duration, bar_size, what_to_show,
+                               1, 1, False, [])
+
     def historicalData(self, req_id, bar: BarData):
         log.debug(f'Received historical data: {bar!r}')
         self.on_bar_update(req_id, bar.date, bar.open, bar.high, bar.low, bar.close, bar.average, bar.volume)
+
+    def historicalDataEnd(self, req_id: int, start: str, end: str):
+        super().historicalDataEnd(req_id, start, end)
+        callback = self.callbacks.pop(req_id)
+        callback()
+
+    def bar_size(self, resolution: Resolution):
+        # See https://interactivebrokers.github.io/tws-api/historical_bars.html#hd_duration
+        bar_sizes = {
+            Resolution.FIVE_SEC: '5 secs',
+            Resolution.MINUTE: '1 min',
+            Resolution.DAY: '1 day',
+            Resolution.WEEK: '1 week',
+            Resolution.MONTH: '1 month'
+        }
+        return bar_sizes[resolution]
 
     def nextValidId(self, order_id):
         log.info(f'Next valid ID: {order_id}')
@@ -177,12 +198,24 @@ class IBApi(EWrapper, EClient):
                             client_id, why_held, mkt_cap_price)
         self.order_listeners[order_id](order_id, status, filled, avg_fill_price)
 
+    def commissionReport(self, commission_report: CommissionReport):
+        super().commissionReport(commission_report)
+        print("CommissionReport.", commission_report)
+
+    def execDetails(self, req_id: int, contract: Contract, execution: Execution):
+        super().execDetails(req_id, contract, execution)
+        print("ExecDetails. ReqId:", req_id, "Symbol:", contract.symbol, "SecType:", contract.secType,
+              "Currency:", contract.currency, execution)
+
     def on_bar_update(self, req_id: TickerId, date, open_: float, high: float, low: float, close: float,
                       wap: float, volume: int):
         if type(date) is int:
             date = datetime.utcfromtimestamp(date)
         elif type(date) is str:
-            date = datetime.strptime(date, '%Y%m%d')
+            try:
+                date = datetime.strptime(date, '%Y%m%d')
+            except ValueError:
+                date = datetime.strptime(date, '%Y%m%d  %H:%M:%S')
         open_, high, low, close, wap = d(open_), d(high), d(low), d(close), d(wap)
         try:
             symbol = self.symbol_ids.reverse[req_id]

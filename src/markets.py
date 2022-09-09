@@ -4,17 +4,18 @@ import pandas as pd
 from decimal import Decimal
 from typing import NamedTuple
 from datetime import datetime
-from enum import Enum
+from enum import Enum, auto
 import dateparser
 from util.events import Event, observe
 
 
 class Resolution(Enum):
-    DAY = 1
-    MINUTE = 2
-    TICK = 3
-    VOLUME_BAR = 4
-    DOLLAR_BAR = 5
+    TICK = 0
+    FIVE_SEC = 5
+    MINUTE = 60
+    DAY = 60 * 60 * 24
+    WEEK = 60 * 60 * 24 * 7
+    MONTH = 60 * 60 * 24 * 7 * 30
 
 
 def last_seven_days(symbol):
@@ -35,6 +36,10 @@ class DataRequest(NamedTuple):
 
     def size_in_days(self):
         return (self.end - self.start).days
+
+    def expected_size(self):
+        delta = self.end - self.start
+        return (delta.seconds + delta.days * 60 * 60 * 24) / self.resolution.value
 
 
 def is_crypto(symbol):
@@ -63,7 +68,7 @@ class TickEvent(Event):
 
 class SymbolData:
 
-    labels = ['Open', 'High', 'Low', 'Close', 'Volume', 'Ref Price']
+    labels = ['Open', 'High', 'Low', 'Close', 'Ref Price', 'Volume']
 
     def __init__(self, symbol: str, data=None):
         self.symbol = symbol.upper()
@@ -80,8 +85,8 @@ class SymbolData:
         self.columns['High'].append(bar.high)
         self.columns['Low'].append(bar.low)
         self.columns['Close'].append(bar.close)
-        self.columns['Volume'].append(bar.volume)
         self.columns['Ref Price'].append(bar.wap)
+        self.columns['Volume'].append(bar.volume)
 
     @property
     def data_frame(self):
