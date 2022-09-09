@@ -81,11 +81,11 @@ class SymbolData:
 
     def append_bar(self, bar: TickBar):
         self.date_index.append(bar.date)
-        self.columns['Open'].append(bar.open)
-        self.columns['High'].append(bar.high)
-        self.columns['Low'].append(bar.low)
-        self.columns['Close'].append(bar.close)
-        self.columns['Ref Price'].append(bar.wap)
+        self.columns['Open'].append(float(bar.open))
+        self.columns['High'].append(float(bar.high))
+        self.columns['Low'].append(float(bar.low))
+        self.columns['Close'].append(float(bar.close))
+        self.columns['Ref Price'].append(float(bar.wap))
         self.columns['Volume'].append(bar.volume)
 
     @property

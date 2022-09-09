@@ -84,3 +84,4 @@ def print_data_frame(symbol, df: DataFrame):
         print(render_bar_data(symbol.upper(), date, *args))
         prev_close = row['Close']
         prev_ref_price = row[4]
+    print(df.describe(include='all'))
