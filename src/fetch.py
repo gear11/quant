@@ -58,9 +58,7 @@ def main():
             symbol = symbol.upper()
             data_frames.append(fetch(args.source, symbol, args.start, args.end, args.resolution))
     for index, df in enumerate(data_frames):
-        # print(f'{df.shape[0]} {request.resolution.name.lower()}(s) of data for {args.symbol[index]}:')
-        print(f'{df.shape[0]} days(s) of data for {args.symbols[index]}:')
-        # print(df)
+        print(f'{df.shape[0]} {args.resolution.name.lower()}(s) of data for {args.symbols[index].upper()}:')
         console.print_data_frame(args.symbols[index], df)
 
 

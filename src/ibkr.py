@@ -18,6 +18,7 @@ from util import events
 import logging as log
 from util.bidict import Bidict
 from typing import Callable
+from util.timeutil import spans_days, count_trading_days
 
 LIVE_TRADING_PORT = 7496
 SIMULATED_TRADING_PORT = 7497
@@ -94,7 +95,8 @@ class IBApi(EWrapper, EClient):
         self.next_symbol_id = 0
         self.order_listeners = {}
         self.connect('127.0.0.1', SIMULATED_TRADING_PORT, CONNECTION_ID)
-        self.callbacks = {}
+        self.historical_req_id = 0
+        self.historical_requests = {}
 
     def start(self):
         if not self.ready:
@@ -152,21 +154,28 @@ class IBApi(EWrapper, EClient):
     def req_historical_data(self, request: markets.DataRequest, callback: Callable):
         contract = contract_for(request.symbol)
         query_time = request.end.strftime("%Y%m%d %H:%M:%S")
-        duration = to_time_string(request.end - request.start)
+        duration = to_time_string(request.start, request.end)
         bar_size = self.bar_size(request.resolution)
         what_to_show = 'MIDPOINT' if markets.is_forex(request.symbol) else 'TRADES'
-        req_id = self.id_for(request.symbol)
-        self.callbacks[req_id] = callback
-        self.reqHistoricalData(req_id, contract, query_time, duration, bar_size, what_to_show,
+        self.historical_req_id += 1
+        self.historical_requests[self.historical_req_id] = (request, callback)
+        self.symbol_ids[request.symbol] = self.historical_req_id
+        self.reqHistoricalData(self.historical_req_id, contract, query_time, duration, bar_size, what_to_show,
                                1, 1, False, [])
 
     def historicalData(self, req_id, bar: BarData):
         log.debug(f'Received historical data: {bar!r}')
-        self.on_bar_update(req_id, bar.date, bar.open, bar.high, bar.low, bar.close, bar.average, bar.volume)
+        request, _ = self.historical_requests[req_id]
+        try:
+            date = datetime.strptime(bar.date, '%Y%m%d')
+        except ValueError:
+            date = datetime.strptime(bar.date, '%Y%m%d  %H:%M:%S')
+        if request.start <= date:
+            self.on_bar_update(req_id, date, bar.open, bar.high, bar.low, bar.close, bar.average, bar.volume)
 
     def historicalDataEnd(self, req_id: int, start: str, end: str):
         super().historicalDataEnd(req_id, start, end)
-        callback = self.callbacks.pop(req_id)
+        _, callback = self.historical_requests.pop(req_id)
         callback()
 
     def bar_size(self, resolution: Resolution):
@@ -258,5 +267,10 @@ def forex_contract(symbol):
     return contract
 
 
-def to_time_string(delta: timedelta):
-    return f'{delta.days} D'
+def to_time_string(start: datetime, end: datetime):
+    if spans_days(start, end):
+        days = count_trading_days(start, end)
+        return f'{days} D'  # Include end day
+    else:
+        secs = (end - start).total_seconds()
+        return f'{secs} S'

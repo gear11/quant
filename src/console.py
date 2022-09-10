@@ -74,7 +74,7 @@ def render_bar_data(symbol, date, open_, high, low, close, ref_price, volume, pr
            f' {volume: >4}'
 
 
-def print_data_frame(symbol, df: DataFrame):
+def print_data_frame(symbol, df: DataFrame, verbose=False):
     prev_close = None
     prev_ref_price = None
     for index, row in df.iterrows():
@@ -84,4 +84,5 @@ def print_data_frame(symbol, df: DataFrame):
         print(render_bar_data(symbol.upper(), date, *args))
         prev_close = row['Close']
         prev_ref_price = row[4]
-    print(df.describe(include='all'))
+    if verbose:
+        print(df.describe(include='all'))

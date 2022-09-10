@@ -1,5 +1,7 @@
 import time
 from collections.abc import Iterable
+from datetime import datetime, timedelta
+import os
 
 
 class Waiter:
@@ -57,6 +59,33 @@ def timed_release(iterable: Iterable, delay: float):
     for item in iterable:
         yield item
         time.sleep(delay)
+
+
+trading_days = set()
+
+
+def is_trading_day(date: datetime):
+    if not trading_days:
+        # python src/fetch.py yahoo 2015-01-01 2023-09-10 msft -r=d | cut -c 1-10 > src/util/trading_days.txt
+        path = os.path.join(os.path.dirname(__file__), 'trading_days.txt')
+        with open(path, 'r') as file:
+            trading_days.update(file.read().splitlines())
+    date_string = date.strftime('%Y-%m-%d')
+    return date_string in trading_days
+
+
+def spans_days(start: datetime, end: datetime):
+    return start.strftime('%Y-%m-%d') != end.strftime('%Y-%m-%d')
+
+
+def count_trading_days(start: datetime, end: datetime):
+    count = 0
+    cur = start
+    while cur <= end:
+        if is_trading_day(cur):
+            count += 1
+        cur = cur + timedelta(days=1)
+    return count
 
 
 def main():
