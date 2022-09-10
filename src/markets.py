@@ -4,7 +4,7 @@ import pandas as pd
 from decimal import Decimal
 from typing import NamedTuple
 from datetime import datetime
-from enum import Enum, auto
+from enum import Enum
 import dateparser
 from util.events import Event, observe
 

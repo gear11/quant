@@ -25,9 +25,6 @@ class FakeBroker(Broker):
     def subscribe_real_time(self, symbol):
         pass
 
-    def get_history(self, request: DataRequest):
-        self.worker.get_history(request)
-
     def place_order(self, position: Position):
         if position.symbol not in self.watchlist:
             raise KeyError(f'Symbol {position.symbol} must be added to watchlist before placing an order')
@@ -64,24 +61,6 @@ class Worker:
                 self.book.append(Order(position, OrderStatus.PENDING, order_id=len(self.book)))
 
             self.update_orders()
-
-            #if int(time.time()) % 5 == 0:
-            #    for symbol, bar in self.watchlist.items():
-            #        events.emit(TickEvent(self.next_bar(symbol, bar.close)))
-
-    def get_history(self, request: DataRequest):
-        pass
-        # days = (request.end - request.start).days
-        # self.add_symbol(request.symbol)
-        # price = self.watchlist[request.symbol]
-        # bars = []
-        # for _ in range(days):
-        #     bar = self.next_bar(request.symbol, price)
-        #     bars.append(bar)
-        #     price = bar.close
-        #
-        # for bar in reversed(bars):
-        #     events.emit(TickEvent(bar))
 
     def update_orders(self):
         for i, order in enumerate(self.book):
