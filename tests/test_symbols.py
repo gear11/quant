@@ -1,4 +1,4 @@
-from markets import SymbolData, Bar
+from markets import SymbolData, TickBar
 from datetime import datetime
 from decimal import Decimal
 
@@ -11,5 +11,5 @@ class TestSymbolData:
 
     def test_append(self):
         sd = SymbolData('foo')
-        sd.append_bar(Bar(datetime.now(), Decimal('1.00'), Decimal('1.90'), Decimal('0.90'), Decimal('1.01'),
-                          Decimal('1.00'), 6))
+        sd.append_bar(TickBar('MSFT', datetime.now(), Decimal('1.00'), Decimal('1.90'), Decimal('0.90'), Decimal('1.01'),
+                      Decimal('1.00'), 6))

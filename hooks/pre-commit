@@ -1,0 +1,8 @@
+#!/bin/sh
+#
+# Make sure to have git run this file by executing:
+#   git config core.hooksPath hooks
+#
+
+
+pytest
