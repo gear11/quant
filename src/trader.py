@@ -14,10 +14,10 @@ import traceback
 from functools import partial
 import time
 from fakebroker import FakeBroker
-from util import events
+from util import events, timeutil
 from markets import TickEvent, TickBar, WatchList
 import logging as log
-from sources import RandomMarketData, YahooData, IBKRMarketData
+from sources import RandomMarketData, YahooData, IBKRMarketData, IBKRHistoricalMarketData
 
 
 class Trader:
@@ -133,11 +133,12 @@ def main():
     parser.add_argument('-f', dest='fake', action='store_const',
                         const=True, default=False,
                         help='Use the fake broker')
-    parser.add_argument('-s', dest='source', type=str, help='Source of market data', choices=['live', 'random', 'hist'],
+    parser.add_argument('-s', dest='source', type=str,
+                        help='Source of market data: "live", "random" or a date for example "2022-09-08 10:00:00"',
                         default='live')
     args = parser.parse_args()
 
-    log.basicConfig(level=log.DEBUG)
+    log.basicConfig(level=log.INFO)
     log.getLogger('ibapi').setLevel(log.WARN)
 
     watchlist = WatchList()
@@ -175,6 +176,10 @@ def init_market_data(args, watchlist):
     elif args.source == 'live':
         watchlist.add_symbol(symbol)
         IBKRMarketData(watchlist).start()
+    else:
+        watchlist.add_symbol(symbol)
+        date = timeutil.parse_date(args.source)
+        IBKRHistoricalMarketData(watchlist, date).start()
 
 
 def run_command_loop(trader: Trader):

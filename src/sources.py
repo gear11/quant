@@ -7,7 +7,8 @@ from util import events
 import random
 import threading
 import console
-from util.timeutil import Waiter
+from util.timeutil import Waiter, is_trading_day
+import os.path
 
 
 class YahooData:
@@ -34,19 +35,46 @@ class YahooData:
 class IBKRData:
 
     @staticmethod
-    def fetch(request: DataRequest):
-
-        data = SymbolData(request.symbol)
-        events.observe(TickEvent, lambda event: data.append_bar(event.tick_bar))
-
+    def fetch_symbol_data(request: DataRequest) -> SymbolData:
         IBApi.instance().start()
-        waiter = Waiter(5)
-        IBApi.instance().req_historical_data(request, waiter)
-
-        while waiter.still_waiting():
-            time.sleep(.1)
+        symbol_data = IBApi.instance().req_historical_data(request)
         IBApi.instance().shutdown()
-        return data.data_frame
+        console.announce(f'Received {len(symbol_data)} tick bars')
+        return symbol_data
+
+    @staticmethod
+    def fetch(request: DataRequest):
+        return IBKRData.fetch_symbol_data(request).data_frame
+
+
+class IBKRHistoricalMarketData:
+
+    def __init__(self, watchlist: WatchList, start_date: datetime):
+        self.watchlist = watchlist
+        if not is_trading_day(start_date):
+            raise ValueError(f'Date {start_date} is not a trading day. No historical data available')
+        self.start_date = start_date
+
+    def run(self):
+        tick_bars = {}
+        while True:
+            for symbol, tick_bar in self.watchlist.items():
+                if symbol not in tick_bars:
+                    one_day_later = self.start_date + timedelta(days=1)
+                    request = DataRequest(symbol, self.start_date, one_day_later, Resolution.FIVE_SEC)
+                    symbol_data = IBKRData.fetch_symbol_data(request)
+                    tick_bars[symbol] = (symbol_data, symbol_data.tick_bars())
+                try:
+                    events.emit(TickEvent(tick_bars[symbol][1].__next__()))
+                except StopIteration:
+                    console.warn('Replaying data')
+                    tick_bars[symbol] = (tick_bars[symbol][0], tick_bars[symbol][0].tick_bars())
+
+            time.sleep(5)
+
+    def start(self):
+        console.announce(f'Starting Historical Market Data Thread at {self.start_date}')
+        threading.Thread(target=self.run, daemon=True).start()
 
 
 class RandomMarketData:

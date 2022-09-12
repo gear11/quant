@@ -1,4 +1,8 @@
+from typing import Callable
+
+
 class Bidict:
+    """A bi-directional dictionary"""
 
     def __init__(self):
         self.dict = {}
@@ -13,3 +17,12 @@ class Bidict:
 
     def __contains__(self, item):
         return self.dict.__contains__(item)
+
+
+class Accumulator:
+    """Accumulates results from a callback"""
+
+    def __init__(self, on_complete: Callable):
+        self.on_complete = on_complete
+
+

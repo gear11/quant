@@ -21,11 +21,11 @@ _fetchers = {
 
 
 def fetch(source: str, symbol: str, start: str, end='today', resolution=Resolution.DAY) -> DataFrame:
-    start = dateparser.parse(start, settings={'TIMEZONE': 'US/Eastern'})
+    start = dateparser.parse(start, settings={'TIMEZONE': 'US/Eastern'}).astimezone()
     if start is None:
         raise IOError(f'Unrecognized start date: {start}')
 
-    end = dateparser.parse(end, settings={'TIMEZONE': 'US/Eastern'})
+    end = dateparser.parse(end, settings={'TIMEZONE': 'US/Eastern'}).astimezone()
     if end is None:
         raise IOError(f'Unrecognized end date: {end}')
 

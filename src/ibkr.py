@@ -15,11 +15,11 @@ import console
 import markets
 from markets import decimal as d, Resolution
 from util import events
-import logging as log
-from util.bidict import Bidict
+import logging
 from typing import Callable
-from util.timeutil import spans_days, count_trading_days
+from util.timeutil import spans_days, count_trading_days, parse_date, Waiter
 
+log = logging.getLogger(__name__)
 LIVE_TRADING_PORT = 7496
 SIMULATED_TRADING_PORT = 7497
 CONNECTION_ID = 1
@@ -91,12 +91,13 @@ class IBApi(EWrapper, EClient):
         self.reqIds(-1)
         self.order_id = 0
         self.ready = False
-        self.symbol_ids = Bidict()
-        self.next_symbol_id = 0
+        # self.req_ids = {}
+        # self.next_symbol_id = 0
         self.order_listeners = {}
         self.connect('127.0.0.1', SIMULATED_TRADING_PORT, CONNECTION_ID)
-        self.historical_req_id = 0
-        self.historical_requests = {}
+        self.req_id = 0
+        self.request_data = {}
+        self.realtime_subs = set()
 
     def start(self):
         if not self.ready:
@@ -128,55 +129,64 @@ class IBApi(EWrapper, EClient):
         self.placeOrder(order_id, contract_for(position.symbol), order)
         return broker_order
 
-    def id_for(self, symbol):
-        try:
-            return self.symbol_ids[symbol]
-        except KeyError:
-            self.next_symbol_id += 1
-            self.symbol_ids[symbol] = self.next_symbol_id
-            return self.next_symbol_id
-
     def subscribe_realtime(self, symbol):
+        if symbol in self.realtime_subs:
+            raise ValueError(f'Already subscribed to {symbol}')
+
         console.announce(f'Subscribing to realtime data for {symbol}')
         contract = contract_for(symbol)
         what_to_show = 'MIDPOINT' if markets.is_forex(symbol) else 'TRADES'
-        req_id = self.id_for(symbol)
+        req_id = self.next_request_id()
+        self.request_data[req_id] = symbol
         console.announce(f'Requesting realtime data for {symbol} via req_id {req_id}')
         self.reqRealTimeBars(req_id, contract, 5, what_to_show, False, [])
 
     def realtimeBar(self, req_id: TickerId, date: int, open_: float, high: float, low: float, close: float,
                     volume: int, wap: float, count: int):
-        self.on_bar_update(req_id, date, open_, high, low, close, wap, volume)
+        symbol = self.request_data[req_id]
+        tick_bar = IBApi.to_tick_bar(symbol, date, open_, high, low, close, wap, volume)
+        events.emit(markets.TickEvent(tick_bar))
 
-    def error(self, req_id: TickerId, error_code: int, error_str: str):
-        log.error(f'ERROR: {req_id} {error_code}: {error_str} ')
-
-    def req_historical_data(self, request: markets.DataRequest, callback: Callable):
+    def req_historical_data(self, request: markets.DataRequest) -> markets.SymbolData:
+        """Blocking call to underlying API"""
+        console.announce(f'Requesting historical date: {request}')
         contract = contract_for(request.symbol)
-        query_time = request.end.strftime("%Y%m%d %H:%M:%S")
+        query_time = request.end.strftime("%Y%m%d-%H:%M:%S")
         duration = to_time_string(request.start, request.end)
         bar_size = self.bar_size(request.resolution)
         what_to_show = 'MIDPOINT' if markets.is_forex(request.symbol) else 'TRADES'
-        self.historical_req_id += 1
-        self.historical_requests[self.historical_req_id] = (request, callback)
-        self.symbol_ids[request.symbol] = self.historical_req_id
-        self.reqHistoricalData(self.historical_req_id, contract, query_time, duration, bar_size, what_to_show,
-                               1, 1, False, [])
+        req_id = self.next_request_id()
+        data = markets.SymbolData(request.symbol)
+        wait_time = 30
+        waiter = Waiter(wait_time)
+        self.request_data[req_id] = (request, data, waiter)
+        self.reqHistoricalData(req_id, contract, query_time, duration, bar_size, what_to_show, 1, 1, False, [])
+        while waiter.still_waiting():
+            time.sleep(1)
+        if waiter.expired():
+            console.warn(f'Historical data request failed to complete in {wait_time}s, results may be incomplete'
+                         f' ({len(data)} tick bars).')
+        return data
 
     def historicalData(self, req_id, bar: BarData):
+        super().historicalData(req_id, bar)
         log.debug(f'Received historical data: {bar!r}')
-        request, _ = self.historical_requests[req_id]
-        try:
-            date = datetime.strptime(bar.date, '%Y%m%d')
-        except ValueError:
-            date = datetime.strptime(bar.date, '%Y%m%d  %H:%M:%S')
+        request, data, _ = self.request_data[req_id]
+        date = parse_date(bar.date).astimezone()
         if request.start <= date:
-            self.on_bar_update(req_id, date, bar.open, bar.high, bar.low, bar.close, bar.average, bar.volume)
+            tick_bar = IBApi.to_tick_bar(request.symbol, date, bar.open, bar.high, bar.low, bar.close, bar.average,
+                                         bar.volume)
+            data.append_bar(tick_bar)
 
     def historicalDataEnd(self, req_id: int, start: str, end: str):
         super().historicalDataEnd(req_id, start, end)
-        _, callback = self.historical_requests.pop(req_id)
-        callback()
+        request, data, waiter = self.request_data.pop(req_id)
+        console.announce(f'Completed historical data request ({len(data)} results): {request}')
+        waiter.done()
+
+    def error(self, req_id: TickerId, error_code: int, error_str: str):
+        super().error(req_id, error_code, error_str)
+        console.error(f'Error. Id:{req_id}, Code: {error_code}, Msg:, {error_str}')
 
     def bar_size(self, resolution: Resolution):
         # See https://interactivebrokers.github.io/tws-api/historical_bars.html#hd_duration
@@ -199,6 +209,10 @@ class IBApi(EWrapper, EClient):
         self.order_id += 1
         return self.order_id
 
+    def next_request_id(self):
+        self.req_id += 1
+        return self.req_id
+
     def orderStatus(self, order_id: OrderId, status: str, filled: float, remaining: float, avg_fill_price: float,
                     perm_id: int, parent_id: int, last_fill_price: float, client_id: int, why_held: str,
                     mkt_cap_price: float):
@@ -216,22 +230,15 @@ class IBApi(EWrapper, EClient):
         print("ExecDetails. ReqId:", req_id, "Symbol:", contract.symbol, "SecType:", contract.secType,
               "Currency:", contract.currency, execution)
 
-    def on_bar_update(self, req_id: TickerId, date, open_: float, high: float, low: float, close: float,
-                      wap: float, volume: int):
+    @staticmethod
+    def to_tick_bar(symbol: str, date, open_: float, high: float, low: float, close: float,
+                    wap: float, volume: int):
         if type(date) is int:
-            date = datetime.utcfromtimestamp(date)
+            date = datetime.utcfromtimestamp(date).astimezone()
         elif type(date) is str:
-            try:
-                date = datetime.strptime(date, '%Y%m%d')
-            except ValueError:
-                date = datetime.strptime(date, '%Y%m%d  %H:%M:%S')
+            date = parse_date(date).astimezone()
         open_, high, low, close, wap = d(open_), d(high), d(low), d(close), d(wap)
-        try:
-            symbol = self.symbol_ids.reverse[req_id]
-            tick_bar = markets.TickBar(symbol, date, open_, high, low, close, wap, volume)
-            events.emit(markets.TickEvent(tick_bar))
-        except KeyError:
-            console.error(f'Received bar update for unknown req_id {req_id}')
+        return markets.TickBar(symbol, date, open_, high, low, close, wap, volume)
 
 
 def contract_for(symbol):

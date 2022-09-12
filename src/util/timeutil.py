@@ -12,10 +12,16 @@ class Waiter:
         self.start = time.perf_counter()
 
     def __call__(self, *args, **kwargs):
+        self.done()
+
+    def still_waiting(self) -> bool:
+        return self.waiting and time.perf_counter() - self.start <= self.max_wait
+
+    def done(self):
         self.waiting = False
 
-    def still_waiting(self):
-        return self.waiting or time.perf_counter() - self.start >= self.max_wait
+    def expired(self):
+        return self.waiting and time.perf_counter() - self.start >= self.max_wait
 
 
 class Timer:
@@ -86,6 +92,19 @@ def count_trading_days(start: datetime, end: datetime):
             count += 1
         cur = cur + timedelta(days=1)
     return count
+
+
+def parse_date(date_str: str) -> datetime:
+    formats = ['%Y%m%d', '%Y%m%d  %H:%M:%S', '%Y-%m-%d', '%Y-%m-%d  %H:%M:%S']
+    for f in formats:
+        try:
+            date = datetime.strptime(date_str, f)
+            date = date.astimezone()
+        except ValueError:
+            pass
+        else:
+            return date
+    raise ValueError(f'Could not parse {date_str} via any of {formats}')
 
 
 def main():

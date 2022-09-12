@@ -95,6 +95,12 @@ class SymbolData:
     def __len__(self):
         return len(self.date_index)
 
+    def tick_bars(self):
+        for i, date in enumerate(self.date_index):
+            yield TickBar(self.symbol, date, self.columns['Open'][i], self.columns['High'][i],
+                          self.columns['Low'][i], self.columns['Close'][i], self.columns['Ref Price'][i],
+                          self.columns['Volume'][i])
+
 
 def decimal(num) -> Decimal | None:
     return Decimal('%.2f' % num) if num is not None else None
