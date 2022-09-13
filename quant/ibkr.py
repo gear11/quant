@@ -13,11 +13,12 @@ from datetime import datetime
 from broker import Broker, Position, Direction, Order as BrokerOrder, OrderStatus, OrderEvent
 import console
 import markets
-from markets import decimal as d, Resolution
+from markets import Resolution
 from util import events
 import logging
 from typing import Callable
 from util.timeutil import spans_days, count_trading_days, parse_date, Waiter
+from util.misc import decimal as d
 
 log = logging.getLogger(__name__)
 LIVE_TRADING_PORT = 7496

@@ -1,8 +1,9 @@
 from broker import Broker, Position, Order, OrderStatus, OrderEvent, OrderBook
-from markets import decimal as d, WatchList
+from markets import WatchList
 import threading
 from queue import Queue, Empty
 from util import events
+from util.misc import decimal as d
 
 
 class FakeBroker(Broker):

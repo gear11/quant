@@ -7,6 +7,7 @@ from datetime import datetime
 from enum import Enum
 import dateparser
 from util.events import Event, observe
+from util.misc import decimal as d
 
 
 class Resolution(Enum):
@@ -39,7 +40,7 @@ class DataRequest(NamedTuple):
 
     def expected_size(self):
         delta = self.end - self.start
-        return (delta.seconds + delta.days * 60 * 60 * 24) / self.resolution.value
+        return (delta.seconds + delta.days * 60 * 60 * 24) / self.resolution.value  # NOQA can't figure out enum
 
 
 def is_crypto(symbol):
@@ -99,13 +100,13 @@ class SymbolData:
 
     def tick_bars(self):
         for i, date in enumerate(self.date_index):
-            yield TickBar(self.symbol, date, self.columns['Open'][i], self.columns['High'][i],
-                          self.columns['Low'][i], self.columns['Close'][i], self.columns['Ref Price'][i],
+            yield TickBar(self.symbol, date,
+                          d(self.columns['Open'][i]),
+                          d(self.columns['High'][i]),
+                          d(self.columns['Low'][i]),
+                          d(self.columns['Close'][i]),
+                          d(self.columns['Ref Price'][i]),
                           self.columns['Volume'][i])
-
-
-def decimal(num) -> Decimal | None:
-    return Decimal('%.2f' % num) if num is not None else None
 
 
 class WatchList:
@@ -139,7 +140,7 @@ class WatchList:
         return self.last_price.keys()
 
     def add_symbol(self, symbol, price=0):
-        price = decimal(price)
+        price = d(price)
         print(f'ADDING {symbol} AT {price}')
         symbol = symbol.upper()
         if symbol not in self.last_price:

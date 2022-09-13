@@ -1,6 +1,6 @@
 .idea/
-src/IGE.xls
-src/calculateMaxDD.py
-src/quant_chapter_3.ipynb
+quant/IGE.xls
+quant/calculateMaxDD.py
+quant/quant_chapter_3.ipynb
 **/__pycache__/
 history

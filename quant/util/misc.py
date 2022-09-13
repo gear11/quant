@@ -1,4 +1,6 @@
+from __future__ import annotations
 from typing import Callable
+from decimal import Decimal
 
 
 class Bidict:
@@ -24,3 +26,7 @@ class Accumulator:
 
     def __init__(self, on_complete: Callable):
         self.on_complete = on_complete
+
+
+def decimal(num) -> Decimal | None:
+    return Decimal('%.2f' % num) if num is not None else None

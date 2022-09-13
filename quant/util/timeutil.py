@@ -72,7 +72,7 @@ trading_days = set()
 
 def is_trading_day(date: datetime):
     if not trading_days:
-        # python src/fetch.py yahoo 2015-01-01 2023-09-10 msft -r=d | cut -c 1-10 > src/util/trading_days.txt
+        # python quant/fetch.py yahoo 2015-01-01 2023-09-10 msft -r=d | cut -c 1-10 > quant/util/trading_days.txt
         path = os.path.join(os.path.dirname(__file__), 'trading_days.txt')
         with open(path, 'r') as file:
             trading_days.update(file.read().splitlines())

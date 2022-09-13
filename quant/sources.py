@@ -1,4 +1,4 @@
-from markets import DataRequest, SymbolData, TickEvent, TickBar, decimal as d, WatchList, Resolution
+from markets import DataRequest, SymbolData, TickEvent, TickBar, WatchList, Resolution
 import pandas_datareader as pdr
 from ibkr import IBApi
 import time
@@ -11,6 +11,7 @@ from util.timeutil import is_trading_day
 import os
 import pandas as pd
 from numpy import float64, int64
+from util.misc import decimal as d
 
 
 class YahooData:
