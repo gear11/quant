@@ -24,5 +24,3 @@ class Accumulator:
 
     def __init__(self, on_complete: Callable):
         self.on_complete = on_complete
-
-
