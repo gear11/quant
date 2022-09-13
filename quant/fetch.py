@@ -6,12 +6,12 @@ from __future__ import annotations
 
 import argparse
 import dateparser
-from sources import YahooData, IBKRData
-from markets import DataRequest, Resolution
+from .sources import YahooData, IBKRData
+from .markets import DataRequest, Resolution
 from pandas import DataFrame
 from functools import partial
-from util.timeutil import Timer
-import console
+from .util.timeutil import Timer
+from .console import console
 
 
 _fetchers = {

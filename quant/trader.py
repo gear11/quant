@@ -1,23 +1,16 @@
-#!/usr/bin/env python3
-from __future__ import annotations
-"""
-Command line tool for executing trades
-"""
-__author__ = "Andy Jenkins"
-__license__ = "Apache 2.0"
+from .broker import Broker, Position, Direction, OrderEvent
+from .console import console, Colors
+from .sources import RandomMarketData, YahooData, IBKRMarketData, IBKRHistoricalMarketData
+from .util import events, timeutil
+from .markets import TickEvent, TickBar, WatchList
+from .fakebroker import FakeBroker
+from .ibkr import InteractiveBroker
 
 import argparse
-from ibkr import InteractiveBroker
-from broker import Broker, Position, Direction, OrderEvent
-import console
 import traceback
 from functools import partial
 import time
-from fakebroker import FakeBroker
-from util import events, timeutil
-from markets import TickEvent, TickBar, WatchList
 import logging as log
-from sources import RandomMarketData, YahooData, IBKRMarketData, IBKRHistoricalMarketData
 
 
 class Trader:
@@ -31,7 +24,7 @@ class Trader:
         self.is_closed = False  # Did we close out our open position?
 
         events.observe(TickEvent, lambda event: self.on_bar(event.tick_bar))
-        events.observe(OrderEvent, lambda event: print(f'Received order status: {event.order}'))
+        events.observe(OrderEvent, lambda event: console.announce(f'Received order status: {event.order}'))
 
     def open_position(self):
         if self.is_open:
@@ -45,7 +38,7 @@ class Trader:
     def on_bar(self, bar: TickBar):
         msg = console.render_bar(bar, self.prev_close, self.prev_wap)
         if self.is_open:
-            msg += console.wrap(f' [P/L: ${self.broker.p_or_l()}]', console.Colors.BLUE)
+            msg += console.wrap(f' [P/L: ${self.broker.p_or_l()}]', Colors.BLUE)
         print(msg)
         self.prev_close = bar.close
         self.prev_wap = bar.wap
@@ -215,7 +208,7 @@ def run_command_loop(trader: Trader):
         command = tokens[0]
         if command not in commands:
             console.announce(f'Unrecognized command {command}')
-            help()
+            help_menu()
         else:
             command = commands[command]
             console.announce(command[0])

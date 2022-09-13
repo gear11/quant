@@ -1,9 +1,10 @@
+from .markets import WatchList
+from .util.events import Event
+
 from enum import Enum
 from typing import NamedTuple
 from decimal import Decimal
-from markets import WatchList
 from abc import abstractmethod, ABC
-from util.events import Event
 
 
 class Direction(Enum):

@@ -1,4 +1,4 @@
-from sources import YahooData
+from quant.sources import YahooData
 
 
 class TestSources:

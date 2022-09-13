@@ -1,9 +1,10 @@
-from broker import Broker, Position, Order, OrderStatus, OrderEvent, OrderBook
-from markets import WatchList
+from .broker import Broker, Position, Order, OrderStatus, OrderEvent, OrderBook
+from .markets import WatchList
+from .util import events
+from .util.misc import decimal as d
+
 import threading
 from queue import Queue, Empty
-from util import events
-from util.misc import decimal as d
 
 
 class FakeBroker(Broker):
@@ -79,5 +80,6 @@ class Worker:
 
 def update_order_status(order: Order, status: OrderStatus):
     order = order.update_status(status)
-    events.emit(OrderEvent(order))
+    event = OrderEvent(order)
+    events.emit(event)
     return order

@@ -1,13 +1,14 @@
 from __future__ import annotations
 
+from .util.events import Event, observe
+from .util.misc import decimal as d
+
 import pandas as pd
 from decimal import Decimal
 from typing import NamedTuple
 from datetime import datetime
 from enum import Enum
 import dateparser
-from util.events import Event, observe
-from util.misc import decimal as d
 
 
 class Resolution(Enum):

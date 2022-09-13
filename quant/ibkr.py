@@ -1,6 +1,13 @@
 """
  Interactive Broker API Wrapper and Broker based on that API
 """
+from .broker import Broker, Position, Direction, Order as BrokerOrder, OrderStatus, OrderEvent
+from .util.timeutil import spans_days, count_trading_days, parse_date, Waiter
+from .util.misc import decimal as d
+from .markets import Resolution, WatchList, DataRequest, SymbolData, is_forex, is_crypto, TickEvent, TickBar
+from .util import events
+from .console import console
+
 from ibapi.client import EClient
 from ibapi.commission_report import CommissionReport
 from ibapi.common import TickerId, BarData
@@ -10,15 +17,9 @@ from ibapi.contract import Contract
 import threading
 import time
 from datetime import datetime
-from broker import Broker, Position, Direction, Order as BrokerOrder, OrderStatus, OrderEvent
-import console
-import markets
-from markets import Resolution
-from util import events
 import logging
 from typing import Callable
-from util.timeutil import spans_days, count_trading_days, parse_date, Waiter
-from util.misc import decimal as d
+
 
 log = logging.getLogger(__name__)
 LIVE_TRADING_PORT = 7496
@@ -28,7 +29,7 @@ CONNECTION_ID = 1
 
 class InteractiveBroker(Broker):
 
-    def __init__(self, watchlist: markets.WatchList):
+    def __init__(self, watchlist: WatchList):
         super().__init__(watchlist)
         self.ib = IBApi.instance()
 
@@ -92,8 +93,6 @@ class IBApi(EWrapper, EClient):
         self.reqIds(-1)
         self.order_id = 0
         self.ready = False
-        # self.req_ids = {}
-        # self.next_symbol_id = 0
         self.order_listeners = {}
         self.connect('127.0.0.1', SIMULATED_TRADING_PORT, CONNECTION_ID)
         self.req_id = 0
@@ -119,7 +118,7 @@ class IBApi(EWrapper, EClient):
         order.orderType = 'MKT'  # or 'LMT' ...
         order.action = 'BUY' if position.direction is Direction.LONG else 'SELL'
 
-        if markets.is_crypto(position.symbol):
+        if is_crypto(position.symbol):
             order.cashQty = position.quantity
         else:
             order.totalQuantity = position.quantity
@@ -136,7 +135,7 @@ class IBApi(EWrapper, EClient):
 
         console.announce(f'Subscribing to realtime data for {symbol}')
         contract = contract_for(symbol)
-        what_to_show = 'MIDPOINT' if markets.is_forex(symbol) else 'TRADES'
+        what_to_show = 'MIDPOINT' if is_forex(symbol) else 'TRADES'
         req_id = self.next_request_id()
         self.request_data[req_id] = symbol
         console.announce(f'Requesting realtime data for {symbol} via req_id {req_id}')
@@ -146,18 +145,18 @@ class IBApi(EWrapper, EClient):
                     volume: int, wap: float, count: int):
         symbol = self.request_data[req_id]
         tick_bar = IBApi.to_tick_bar(symbol, date, open_, high, low, close, wap, volume)
-        events.emit(markets.TickEvent(tick_bar))
+        events.emit(TickEvent(tick_bar))
 
-    def req_historical_data(self, request: markets.DataRequest) -> markets.SymbolData:
+    def req_historical_data(self, request: DataRequest) -> SymbolData:
         """Blocking call to underlying API"""
         console.announce(f'Requesting historical date: {request}')
         contract = contract_for(request.symbol)
         query_time = request.end.strftime("%Y%m%d-%H:%M:%S")
         duration = to_time_string(request.start, request.end)
         bar_size = self.bar_size(request.resolution)
-        what_to_show = 'MIDPOINT' if markets.is_forex(request.symbol) else 'TRADES'
+        what_to_show = 'MIDPOINT' if is_forex(request.symbol) else 'TRADES'
         req_id = self.next_request_id()
-        data = markets.SymbolData(request.symbol)
+        data = SymbolData(request.symbol)
         wait_time = 30
         waiter = Waiter(wait_time)
         self.request_data[req_id] = (request, data, waiter)
@@ -239,12 +238,12 @@ class IBApi(EWrapper, EClient):
         elif type(date) is str:
             date = parse_date(date).astimezone()
         open_, high, low, close, wap = d(open_), d(high), d(low), d(close), d(wap)
-        return markets.TickBar(symbol, date, open_, high, low, close, wap, volume)
+        return TickBar(symbol, date, open_, high, low, close, wap, volume)
 
 
 def contract_for(symbol):
-    return crypto_contract(symbol) if markets.is_crypto(symbol) \
-        else forex_contract(symbol) if markets.is_forex(symbol) \
+    return crypto_contract(symbol) if is_crypto(symbol) \
+        else forex_contract(symbol) if is_forex(symbol) \
         else stock_contract(symbol)
 
 
