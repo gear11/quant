@@ -67,17 +67,17 @@ def timed_release(iterable: Iterable, delay: float):
         time.sleep(delay)
 
 
-trading_days = set()
+all_trading_days = set()
 
 
 def is_trading_day(date: datetime):
-    if not trading_days:
+    if not all_trading_days:
         # python quant/fetch.py yahoo 2015-01-01 2023-09-10 msft -r=d | cut -c 1-10 > quant/util/trading_days.txt
         path = os.path.join(os.path.dirname(__file__), 'trading_days.txt')
         with open(path, 'r') as file:
-            trading_days.update(file.read().splitlines())
+            all_trading_days.update(file.read().splitlines())
     date_string = date.strftime('%Y-%m-%d')
-    return date_string in trading_days
+    return date_string in all_trading_days
 
 
 def spans_days(start: datetime, end: datetime):
@@ -85,13 +85,15 @@ def spans_days(start: datetime, end: datetime):
 
 
 def count_trading_days(start: datetime, end: datetime):
-    count = 0
+    trading_days = 0
+    total_days = 0
     cur = start
-    while cur <= end:
+    while cur < end:
         if is_trading_day(cur):
-            count += 1
+            trading_days += 1
         cur = cur + timedelta(days=1)
-    return count
+        total_days += 1
+    return total_days, trading_days
 
 
 def parse_date(date_str: str) -> datetime:

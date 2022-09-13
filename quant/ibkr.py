@@ -92,26 +92,32 @@ class IBApi(EWrapper, EClient):
         EClient.__init__(self, self)
         self.reqIds(-1)
         self.order_id = 0
-        self.ready = False
+        self.thread_running = False
         self.order_listeners = {}
-        self.connect('127.0.0.1', SIMULATED_TRADING_PORT, CONNECTION_ID)
+        self.is_connected = False
         self.req_id = 0
         self.request_data = {}
         self.realtime_subs = set()
 
     def start(self):
-        if not self.ready:
+        if not self.is_connected:
+            self.connect('127.0.0.1', SIMULATED_TRADING_PORT, CONNECTION_ID)
+        if not self.thread_running:
             console.announce('Starting IB Thread')
             ib_thread = threading.Thread(target=self.run, daemon=True)
             ib_thread.start()
-            while not self.ready:
+            while not self.thread_running:
                 time.sleep(.1)
+            return True
         else:
             console.announce('IB Thread already started')
+            return False
 
     def shutdown(self):
+        self.reader.done = True
         self.disconnect()
-        self.ready = False
+        self.is_connected = False
+        self.thread_running = False
 
     def place_order(self, position: Position, order_listener: Callable) -> BrokerOrder:
         order = Order()
@@ -149,7 +155,7 @@ class IBApi(EWrapper, EClient):
 
     def req_historical_data(self, request: DataRequest) -> SymbolData:
         """Blocking call to underlying API"""
-        console.announce(f'Requesting historical date: {request}')
+        console.announce(f'Requesting historical data. Original request: {request}')
         contract = contract_for(request.symbol)
         query_time = request.end.strftime("%Y%m%d-%H:%M:%S")
         duration = to_time_string(request.start, request.end)
@@ -160,6 +166,7 @@ class IBApi(EWrapper, EClient):
         wait_time = 30
         waiter = Waiter(wait_time)
         self.request_data[req_id] = (request, data, waiter)
+        console.announce(f'Requesting historical data. IBKR request: req_id: {req_id} query_time: {query_time} duration: {duration} bar_size: {bar_size}')
         self.reqHistoricalData(req_id, contract, query_time, duration, bar_size, what_to_show, 1, 1, False, [])
         while waiter.still_waiting():
             time.sleep(1)
@@ -200,10 +207,10 @@ class IBApi(EWrapper, EClient):
         return bar_sizes[resolution]
 
     def nextValidId(self, order_id):
-        log.info(f'Next valid ID: {order_id}')
+        console.announce(f'Connection ready. Next valid ID: {order_id}')
         EWrapper.nextValidId(self, order_id)
         self.order_id = order_id
-        self.ready = True
+        self.thread_running = True
 
     def next_order_id(self):
         self.order_id += 1
@@ -276,8 +283,8 @@ def forex_contract(symbol):
 
 def to_time_string(start: datetime, end: datetime):
     if spans_days(start, end):
-        days = count_trading_days(start, end)
-        return f'{days} D'  # Include end day
+        total_days, trading_days = count_trading_days(start, end)
+        return f'{trading_days if trading_days else total_days} D'  # Include end day
     else:
         secs = (end - start).total_seconds()
         return f'{secs} S'

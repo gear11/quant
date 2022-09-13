@@ -41,9 +41,10 @@ class IBKRData:
 
     @staticmethod
     def fetch_symbol_data(request: DataRequest) -> SymbolData:
-        IBApi.instance().start()
+        started = IBApi.instance().start()
         symbol_data = IBApi.instance().req_historical_data(request)
-        IBApi.instance().shutdown()
+        if started:
+            IBApi.instance().shutdown()
         console.announce(f'Received {len(symbol_data)} tick bars')
         return symbol_data
 
@@ -54,12 +55,12 @@ class IBKRData:
 
 class IBKRHistoricalMarketData:
 
-    def __init__(self, watchlist: WatchList, start_date: datetime, history_dir: str = None):
+    def __init__(self, watchlist: WatchList, start_date: datetime, cache_dir: str = None):
         self.watchlist = watchlist
         if not is_trading_day(start_date):
             raise ValueError(f'Date {start_date} is not a trading day. No historical data available')
         self.start_date = start_date
-        self.history_loader = HistoryLoader(history_dir) if history_dir else None
+        self.data_cache = DataCache(cache_dir) if cache_dir else None
 
     def run(self):
         tick_bars = {}
@@ -67,12 +68,12 @@ class IBKRHistoricalMarketData:
             for symbol, tick_bar in self.watchlist.items():
                 if symbol not in tick_bars:
                     symbol_data = None
-                    if self.history_loader:
-                        symbol_data = self.history_loader.load(symbol, self.start_date)
+                    if self.data_cache:
+                        symbol_data = self.data_cache.load(symbol, self.start_date)
                     if not symbol_data:
                         symbol_data = self.fetch_data(symbol, self.start_date)
-                        if self.history_loader:
-                            self.history_loader.save(symbol_data)
+                        if self.data_cache:
+                            self.data_cache.save(symbol_data)
                     tick_bars[symbol] = (symbol_data, symbol_data.tick_bars())
                 try:
                     events.emit(TickEvent(tick_bars[symbol][1].__next__()))
@@ -93,11 +94,11 @@ class IBKRHistoricalMarketData:
         threading.Thread(target=self.run, daemon=True).start()
 
 
-class HistoryLoader:
+class DataCache:
 
-    def __init__(self, history_dir):
-        console.announce(f'Using stored history dir {history_dir}')
-        self.history_dir = history_dir
+    def __init__(self, cache_dir):
+        console.announce(f'Using stored history dir {cache_dir}')
+        self.cache_dir = cache_dir
 
     def load(self, symbol: str, date: datetime) -> SymbolData:
         path = self.path_for(symbol, date)
@@ -114,15 +115,15 @@ class HistoryLoader:
             return SymbolData(symbol, data_frame)
 
     def save(self, data: SymbolData):
-        if not os.path.exists(self.history_dir):
-            os.mkdir(self.history_dir)
+        if not os.path.exists(self.cache_dir):
+            os.mkdir(self.cache_dir)
         path = self.path_for(data.symbol, data.date_index[0])
         data.data_frame.to_csv(path)
 
     def path_for(self, symbol, date):
         date_str = date.strftime('%Y-%m-%d')
         filename = f'{date_str}-{symbol}.csv'
-        return os.path.join(self.history_dir, filename)
+        return os.path.join(self.cache_dir, filename)
 
 
 class RandomMarketData:
