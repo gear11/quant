@@ -170,4 +170,3 @@ class Broker(ABC):
     @abstractmethod
     def place_order(self, position: Position) -> Order:
         """Places an order to acquire the given position"""
-

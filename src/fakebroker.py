@@ -1,5 +1,5 @@
 from broker import Broker, Position, Order, OrderStatus, OrderEvent, OrderBook
-from markets import DataRequest, decimal as d, WatchList
+from markets import decimal as d, WatchList
 import threading
 from queue import Queue, Empty
 from util import events

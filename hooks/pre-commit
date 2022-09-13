@@ -1,8 +1,9 @@
 #!/bin/sh
-#
+
 # Make sure to have git run this file by executing:
 #   git config core.hooksPath hooks
-#
-
+# Bypass using:
+#   git commit --no-verify
+# For additional details, see: https://git-scm.com/book/en/v2/Customizing-Git-Git-Hooks
 
 pytest

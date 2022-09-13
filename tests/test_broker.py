@@ -1,4 +1,5 @@
-from broker import *
+from broker import Position, Direction, Order, OrderStatus
+from decimal import Decimal
 
 
 class TestBroker:
@@ -28,7 +29,3 @@ class TestBroker:
         profit = (current_price - filled_at) * quantity
 
         assert order.p_or_l(current_price) == profit, 'Profit of order does not match current price'
-
-
-
-

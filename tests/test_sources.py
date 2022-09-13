@@ -1,4 +1,4 @@
-from sources import *
+from sources import YahooData
 
 
 class TestSources:

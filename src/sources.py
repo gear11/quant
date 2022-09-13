@@ -7,8 +7,7 @@ from util import events
 import random
 import threading
 import console
-from util.timeutil import Waiter, is_trading_day
-import os.path
+from util.timeutil import is_trading_day
 
 
 class YahooData:

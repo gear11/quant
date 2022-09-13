@@ -9,7 +9,7 @@ from ibapi.wrapper import EWrapper, OrderId, Order
 from ibapi.contract import Contract
 import threading
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from broker import Broker, Position, Direction, Order as BrokerOrder, OrderStatus, OrderEvent
 import console
 import markets
@@ -54,7 +54,7 @@ class InteractiveBroker(Broker):
         try:
             order, index = self.book.by_order_id(order_id)
             if type(filled) is float and not filled.is_integer():
-                console.warn(f'Fractional order fill!')
+                console.warn('Fractional order fill!')
             order = order.update_status(status, d(avg_fill_price), filled)
             self.book[index] = order
             events.emit(OrderEvent(order))
