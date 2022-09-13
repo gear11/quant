@@ -136,6 +136,7 @@ def main():
     parser.add_argument('-s', dest='source', type=str,
                         help='Source of market data: "live", "random" or a date for example "2022-09-08 10:00:00"',
                         default='live')
+    parser.add_argument('-H', dest='history', type=str, help='Directory for storing history', default='history')
     args = parser.parse_args()
 
     log.basicConfig(level=log.INFO)
@@ -179,7 +180,7 @@ def init_market_data(args, watchlist):
     else:
         watchlist.add_symbol(symbol)
         date = timeutil.parse_date(args.source)
-        IBKRHistoricalMarketData(watchlist, date).start()
+        IBKRHistoricalMarketData(watchlist, date, args.history).start()
 
 
 def run_command_loop(trader: Trader):

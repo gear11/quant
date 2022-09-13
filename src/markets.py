@@ -70,11 +70,11 @@ class SymbolData:
 
     labels = ['Open', 'High', 'Low', 'Close', 'Ref Price', 'Volume']
 
-    def __init__(self, symbol: str, data=None):
+    def __init__(self, symbol: str, data_frame: pd.DataFrame = None):
         self.symbol = symbol.upper()
-        if data:
-            self.date_index = data['Date']
-            self.columns = {k: v for (k, v) in data.items() if k != 'Date'}
+        if data_frame is not None:
+            self.date_index = data_frame['Date']
+            self.columns = {k: v for (k, v) in data_frame.items() if k != 'Date'}
         else:
             self.date_index = []
             self.columns = {label: [] for label in SymbolData.labels}
@@ -90,7 +90,9 @@ class SymbolData:
 
     @property
     def data_frame(self):
-        return pd.DataFrame(index=self.date_index, data=self.columns)
+        data_frame = pd.DataFrame(index=self.date_index, data=self.columns)
+        data_frame.index.name = 'Date'
+        return data_frame
 
     def __len__(self):
         return len(self.date_index)

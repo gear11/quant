@@ -8,6 +8,9 @@ import random
 import threading
 import console
 from util.timeutil import is_trading_day
+import os
+import pandas as pd
+from numpy import float64, int64
 
 
 class YahooData:
@@ -48,20 +51,25 @@ class IBKRData:
 
 class IBKRHistoricalMarketData:
 
-    def __init__(self, watchlist: WatchList, start_date: datetime):
+    def __init__(self, watchlist: WatchList, start_date: datetime, history_dir: str = None):
         self.watchlist = watchlist
         if not is_trading_day(start_date):
             raise ValueError(f'Date {start_date} is not a trading day. No historical data available')
         self.start_date = start_date
+        self.history_loader = HistoryLoader(history_dir) if history_dir else None
 
     def run(self):
         tick_bars = {}
         while True:
             for symbol, tick_bar in self.watchlist.items():
                 if symbol not in tick_bars:
-                    one_day_later = self.start_date + timedelta(days=1)
-                    request = DataRequest(symbol, self.start_date, one_day_later, Resolution.FIVE_SEC)
-                    symbol_data = IBKRData.fetch_symbol_data(request)
+                    symbol_data = None
+                    if self.history_loader:
+                        symbol_data = self.history_loader.load(symbol, self.start_date)
+                    if not symbol_data:
+                        symbol_data = self.fetch_data(symbol, self.start_date)
+                        if self.history_loader:
+                            self.history_loader.save(symbol_data)
                     tick_bars[symbol] = (symbol_data, symbol_data.tick_bars())
                 try:
                     events.emit(TickEvent(tick_bars[symbol][1].__next__()))
@@ -71,9 +79,47 @@ class IBKRHistoricalMarketData:
 
             time.sleep(5)
 
+    @staticmethod
+    def fetch_data(symbol, date):
+        one_day_later = date + timedelta(days=1)
+        request = DataRequest(symbol, date, one_day_later, Resolution.FIVE_SEC)
+        return IBKRData.fetch_symbol_data(request)
+
     def start(self):
         console.announce(f'Starting Historical Market Data Thread at {self.start_date}')
         threading.Thread(target=self.run, daemon=True).start()
+
+
+class HistoryLoader:
+
+    def __init__(self, history_dir):
+        console.announce(f'Using stored history dir {history_dir}')
+        self.history_dir = history_dir
+
+    def load(self, symbol: str, date: datetime) -> SymbolData:
+        path = self.path_for(symbol, date)
+        if os.path.exists(path):
+            data_frame = pd.read_csv(path, dtype={
+                'Date': str,
+                'Open': float64,
+                'High': float64,
+                'Low': float64,
+                'Close': float64,
+                'Ref Price': float64,
+                'Volume': int64
+            }, parse_dates=['Date'])
+            return SymbolData(symbol, data_frame)
+
+    def save(self, data: SymbolData):
+        if not os.path.exists(self.history_dir):
+            os.mkdir(self.history_dir)
+        path = self.path_for(data.symbol, data.date_index[0])
+        data.data_frame.to_csv(path)
+
+    def path_for(self, symbol, date):
+        date_str = date.strftime('%Y-%m-%d')
+        filename = f'{date_str}-{symbol}.csv'
+        return os.path.join(self.history_dir, filename)
 
 
 class RandomMarketData:
