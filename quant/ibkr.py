@@ -4,7 +4,7 @@
 from .broker import Broker, Position, Direction, Order as BrokerOrder, OrderStatus, OrderEvent
 from .util.timeutil import spans_days, count_trading_days, parse_date, Waiter
 from .util.misc import decimal as d
-from .markets import Resolution, WatchList, DataRequest, SymbolData, is_forex, is_crypto, TickEvent, TickBar
+from .markets import Resolution, WatchList, DataRequest, SymbolData, Symbols, TickEvent, TickBar
 from .util import events
 from .console import console
 
@@ -124,7 +124,7 @@ class IBApi(EWrapper, EClient):
         order.orderType = 'MKT'  # or 'LMT' ...
         order.action = 'BUY' if position.direction is Direction.LONG else 'SELL'
 
-        if is_crypto(position.symbol):
+        if Symbols.is_crypto(position.symbol):
             order.cashQty = position.quantity
         else:
             order.totalQuantity = position.quantity
@@ -141,7 +141,7 @@ class IBApi(EWrapper, EClient):
 
         console.announce(f'Subscribing to realtime data for {symbol}')
         contract = contract_for(symbol)
-        what_to_show = 'MIDPOINT' if is_forex(symbol) else 'TRADES'
+        what_to_show = 'MIDPOINT' if Symbols.is_forex(symbol) else 'TRADES'
         req_id = self.next_request_id()
         self.request_data[req_id] = symbol
         console.announce(f'Requesting realtime data for {symbol} via req_id {req_id}')
@@ -160,30 +160,30 @@ class IBApi(EWrapper, EClient):
         query_time = request.end.strftime("%Y%m%d-%H:%M:%S")
         duration = to_time_string(request.start, request.end)
         bar_size = self.bar_size(request.resolution)
-        what_to_show = 'MIDPOINT' if is_forex(request.symbol) else 'TRADES'
+        what_to_show = 'MIDPOINT' if Symbols.is_forex(request.symbol) else 'TRADES'
         req_id = self.next_request_id()
-        data = SymbolData(request.symbol)
+        symbol_data = SymbolData(request.symbol)
         wait_time = 30
         waiter = Waiter(wait_time)
-        self.request_data[req_id] = (request, data, waiter)
+        self.request_data[req_id] = (request, symbol_data, waiter)
         console.announce(f'Requesting historical data. IBKR request: req_id: {req_id} query_time: {query_time} duration: {duration} bar_size: {bar_size}')
         self.reqHistoricalData(req_id, contract, query_time, duration, bar_size, what_to_show, 1, 1, False, [])
         while waiter.still_waiting():
             time.sleep(1)
         if waiter.expired():
             console.warn(f'Historical data request failed to complete in {wait_time}s, results may be incomplete'
-                         f' ({len(data)} tick bars).')
-        return data
+                         f' ({len(symbol_data)} tick bars).')
+        return symbol_data
 
     def historicalData(self, req_id, bar: BarData):
         super().historicalData(req_id, bar)
         log.debug(f'Received historical data: {bar!r}')
-        request, data, _ = self.request_data[req_id]
+        request, symbol_data, _ = self.request_data[req_id]
         date = parse_date(bar.date).astimezone()
         if request.start <= date:
             tick_bar = IBApi.to_tick_bar(request.symbol, date, bar.open, bar.high, bar.low, bar.close, bar.average,
                                          bar.volume)
-            data.append_bar(tick_bar)
+            symbol_data.append_bar(tick_bar)
 
     def historicalDataEnd(self, req_id: int, start: str, end: str):
         super().historicalDataEnd(req_id, start, end)
@@ -249,8 +249,8 @@ class IBApi(EWrapper, EClient):
 
 
 def contract_for(symbol):
-    return crypto_contract(symbol) if is_crypto(symbol) \
-        else forex_contract(symbol) if is_forex(symbol) \
+    return crypto_contract(symbol) if Symbols.is_crypto(symbol) \
+        else forex_contract(symbol) if Symbols.is_forex(symbol) \
         else stock_contract(symbol)
 
 

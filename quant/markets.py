@@ -44,12 +44,15 @@ class DataRequest(NamedTuple):
         return (delta.seconds + delta.days * 60 * 60 * 24) / self.resolution.value  # NOQA can't figure out enum
 
 
-def is_crypto(symbol):
-    return symbol.upper() in ('BTC', 'ETH')
+class Symbols:
 
+    @staticmethod
+    def is_crypto(symbol):
+        return symbol.upper() in ('BTC', 'ETH')
 
-def is_forex(symbol):
-    return symbol.upper() in ('EUR', 'BTC')
+    @staticmethod
+    def is_forex(symbol):
+        return symbol.upper() in ('EUR', 'BTC')
 
 
 class TickBar(NamedTuple):
@@ -61,6 +64,10 @@ class TickBar(NamedTuple):
     close: Decimal
     wap: Decimal
     volume: int
+
+    @staticmethod
+    def new(symbol: str, date: datetime, open: float, high: float, low: float, close: float, wap: float, volume: int):
+        return TickBar(symbol, date, d(open), d(high), d(low), d(close), d(wap), volume)
 
 
 class TickEvent(Event):
@@ -90,6 +97,15 @@ class SymbolData:
         self.columns['Ref Price'].append(float(bar.wap))
         self.columns['Volume'].append(bar.volume)
 
+    def __getitem__(self, i) -> TickBar:
+        return self.tick_bar(i)
+
+    def tick_bar(self, i) -> TickBar:
+        r = [self.columns[key][i] for key in self.columns.keys()]
+        r.insert(0, self.date_index[i])
+        r.insert(0, self.symbol)
+        return TickBar(*r)
+
     @property
     def data_frame(self):
         data_frame = pd.DataFrame(index=self.date_index, data=self.columns)
@@ -108,6 +124,31 @@ class SymbolData:
                           d(self.columns['Close'][i]),
                           d(self.columns['Ref Price'][i]),
                           self.columns['Volume'][i])
+
+    def condense(self, factor) -> 'SymbolData':
+        cur_ticks = len(self.date_index)
+        new_ticks = (cur_ticks // factor) + 1  # Floor division + 2
+        date_index = []
+        columns = {label: [] for label in self.columns}
+        for tick in range(new_ticks):
+            start = tick * factor
+            if start == cur_ticks:
+                break
+            end = min(start + factor, cur_ticks)  # Exclusive
+            s = slice(start, end)
+            print(s)
+            date_index.append(self.date_index[end - 1])
+            columns['Open'].append(self.columns['Open'][s][0])
+            columns['Close'].append(self.columns['Close'][s][-1])
+            columns['Low'].append(min(self.columns['Low'][s]))
+            columns['High'].append(max(self.columns['High'][s]))
+            columns['Ref Price'].append(sum(self.columns['Ref Price'][s])/factor)
+            columns['Volume'].append(sum(self.columns['Volume'][s]))
+
+        sd = SymbolData(self.symbol)
+        sd.date_index = date_index
+        sd.columns = columns
+        return sd
 
 
 class WatchList:
