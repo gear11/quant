@@ -1,16 +1,17 @@
 from .broker import Broker, Position, Direction, OrderEvent
 from .console import console, Colors
 from .sources import RandomMarketData, YahooData, IBKRMarketData, IBKRHistoricalMarketData
-from .util import events, timeutil
+from .util import events, timeutil, Parser
 from .markets import TickEvent, TickBar, WatchList
 from .fakebroker import FakeBroker
 from .ibkr import InteractiveBroker
 
-import argparse
 import traceback
 from functools import partial
 import time
-import logging as log
+import logging
+
+log = logging.getLogger(__name__)
 
 
 class Trader:
@@ -116,7 +117,7 @@ class Trader:
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Execute a trade')
+    parser = Parser(description='Execute a trade')
     parser.add_argument('direction', type=str, help='Direction of trade: buy or sell', choices=['buy', 'sell'])
     parser.add_argument('quantity', type=int, help='Number of shares to buy or sell')
     parser.add_argument('symbol', type=str, help='Symbol to trade')
@@ -132,8 +133,7 @@ def main():
     parser.add_argument('-H', dest='history', type=str, help='Directory for storing history', default='history')
     args = parser.parse_args()
 
-    log.basicConfig(level=log.INFO)
-    log.getLogger('ibapi').setLevel(log.WARN)
+    logging.getLogger('ibapi').setLevel(logging.WARN)
 
     watchlist = WatchList()
     broker = init_broker(args, watchlist)

@@ -57,7 +57,8 @@ class console: # NOQA
 
     @classmethod
     def render_bar(cls, bar: TickBar, prev_close=None, prev_wap=None):
-        return cls.render_bar_data(bar.symbol, bar.date, bar.open, bar.close, bar.wap, bar.volume, prev_close, prev_wap)
+        return cls.render_bar_data(bar.symbol, bar.date, bar.open, bar.high, bar.low, bar.close, bar.wap, bar.volume,
+                                   prev_close, prev_wap)
 
     @classmethod
     def render_bar_data(cls, symbol, date, open_, high, low, close, ref_price, volume, prev_close=None, prev_ref_price=None):

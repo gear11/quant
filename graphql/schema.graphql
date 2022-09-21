@@ -1,0 +1,56 @@
+schema {
+    query: Query
+    subscription: Subscription
+}
+
+type Query {
+    listSymbols: SymbolResult!
+    getWatchList: WatchListResult!
+}
+
+type Subscription {
+    counter: CounterResult!
+    tickBars: TickBarResult!
+}
+
+type SymbolResult {
+    success: Boolean!
+    errors: [String]
+    symbols: [Symbol]
+}
+
+type WatchListResult {
+    success: Boolean!
+    errors: [String]
+    items: [TickBar]
+}
+
+type CounterResult {
+    success: Boolean!
+    errors: [String]
+    count: Int
+}
+
+type TickBarResult {
+    success: Boolean!
+    errors: [String]
+    tickBar: TickBar
+}
+
+type Symbol {
+    name: String!
+}
+
+scalar DateTime
+
+type TickBar {
+    symbol: String!
+    date: DateTime!
+    open: Float!
+    high: Float!
+    low: Float!
+    close: Float!
+    wap: Float!
+    volume: Int!
+}
+

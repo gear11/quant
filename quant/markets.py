@@ -9,6 +9,9 @@ from typing import NamedTuple
 from datetime import datetime
 from enum import Enum
 import dateparser
+import logging
+
+log = logging.getLogger(__name__)
 
 
 class Resolution(Enum):
@@ -69,10 +72,25 @@ class TickBar(NamedTuple):
     def new(symbol: str, date: datetime, open: float, high: float, low: float, close: float, wap: float, volume: int):
         return TickBar(symbol, date, d(open), d(high), d(low), d(close), d(wap), volume)
 
+    def to_gql(self):
+        return {
+            'symbol': self.symbol,
+            'date': self.date.isoformat(),
+            'open': float(self.open),
+            'high': float(self.high),
+            'low': float(self.low),
+            'close': float(self.close),
+            'wap': float(self.wap),
+            'volume': self.volume,
+        }
+
 
 class TickEvent(Event):
     def __init__(self, tick_bar: TickBar):
         self.tick_bar = tick_bar
+
+    def __str__(self):
+        return f'{self.__class__.__name__}({self.tick_bar.to_gql()})'
 
 
 class SymbolData:
@@ -161,6 +179,7 @@ class WatchList:
         observe(TickEvent, lambda event: self.__setitem__(event.tick_bar.symbol, event.tick_bar))
 
     def __setitem__(self, symbol, last_price: TickBar):
+        log.debug(f'Updating watchlist tickbar: {last_price}')
         self.last_price[symbol] = last_price
 
     def __getitem__(self, symbol):
@@ -183,7 +202,10 @@ class WatchList:
 
     def add_symbol(self, symbol, price=0):
         price = d(price)
-        print(f'ADDING {symbol} AT {price}')
+        log.debug(f'Adding {symbol} at {price}')
         symbol = symbol.upper()
         if symbol not in self.last_price:
             self.last_price[symbol] = TickBar(symbol, datetime.now(), price, price, price, price, price, 0)
+
+    def __str__(self):
+        return f'{self.last_price}'
