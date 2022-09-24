@@ -34,7 +34,7 @@ def emit(event: Event):
             else:
                 print(f'Observer for {clazz} WAS NOT GCd')
         else:
-            print(f'Observer for {clazz} is not a weak ref')
+            # print(f'Observer for {clazz} is not a weak ref')
             observer = ref
 
         try:

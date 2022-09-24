@@ -6,6 +6,7 @@ from .util.timeutil import spans_days, count_trading_days, parse_date, Waiter
 from .util.misc import decimal as d
 from .markets import Resolution, WatchList, DataRequest, SymbolData, Symbols, TickEvent, TickBar
 from .util import events
+from .util.timeutil import Timer
 from .console import console
 
 from ibapi.client import EClient
@@ -22,6 +23,8 @@ from typing import Callable
 
 
 log = logging.getLogger(__name__)
+logging.getLogger('ibapi').setLevel(logging.INFO)
+
 LIVE_TRADING_PORT = 7496
 SIMULATED_TRADING_PORT = 7497
 CONNECTION_ID = 1
@@ -106,7 +109,11 @@ class IBApi(EWrapper, EClient):
             console.announce('Starting IB Thread')
             ib_thread = threading.Thread(target=self.run, daemon=True)
             ib_thread.start()
+            t = Timer()
             while not self.thread_running:
+                if t.total() > 10:
+                    console.error('Unable to start IB Thread')
+                    return False
                 time.sleep(.1)
             return True
         else:
@@ -159,14 +166,15 @@ class IBApi(EWrapper, EClient):
         contract = contract_for(request.symbol)
         query_time = request.end.strftime("%Y%m%d-%H:%M:%S")
         duration = to_time_string(request.start, request.end)
-        bar_size = self.bar_size(request.resolution)
+        bar_size = IBApi._bar_size(request.resolution)
         what_to_show = 'MIDPOINT' if Symbols.is_forex(request.symbol) else 'TRADES'
         req_id = self.next_request_id()
         symbol_data = SymbolData(request.symbol)
         wait_time = 30
         waiter = Waiter(wait_time)
         self.request_data[req_id] = (request, symbol_data, waiter)
-        console.announce(f'Requesting historical data. IBKR request: req_id: {req_id} query_time: {query_time} duration: {duration} bar_size: {bar_size}')
+        console.announce(f'Requesting historical data. IBKR request:'
+                         f' req_id: {req_id} query_time: {query_time} duration: {duration} bar_size: {bar_size}')
         self.reqHistoricalData(req_id, contract, query_time, duration, bar_size, what_to_show, 1, 1, False, [])
         while waiter.still_waiting():
             time.sleep(1)
@@ -195,7 +203,8 @@ class IBApi(EWrapper, EClient):
         super().error(req_id, error_code, error_str)
         console.error(f'Error. Id:{req_id}, Code: {error_code}, Msg:, {error_str}')
 
-    def bar_size(self, resolution: Resolution):
+    @staticmethod
+    def _bar_size(resolution: Resolution):
         # See https://interactivebrokers.github.io/tws-api/historical_bars.html#hd_duration
         bar_sizes = {
             Resolution.FIVE_SEC: '5 secs',

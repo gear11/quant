@@ -13,6 +13,7 @@ class Parser(argparse.ArgumentParser):
     def parse_args(self, *args, **kwargs):
         parsed = super().parse_args(*args, **kwargs)
         level = logging.DEBUG if parsed.debug else logging.INFO if parsed.info else logging.WARNING
+        logging.basicConfig(level=level)
         logging.getLogger('root').setLevel(level)
         return parsed
 

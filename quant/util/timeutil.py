@@ -41,8 +41,11 @@ class Timer:
     def __getitem__(self, item):
         return self.t.__getitem__(item)
 
+    def total(self):
+        return time.perf_counter() - self.base
+
     def step(self, fmt):
-        total = time.perf_counter() - self.base
+        total = self.total()
         self.t.append(total)
         delta = total - self.t[-2]
 

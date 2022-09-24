@@ -202,9 +202,9 @@ class WatchList:
 
     def add_symbol(self, symbol, price=0):
         price = d(price)
-        log.debug(f'Adding {symbol} at {price}')
+        log.info(f'Adding {symbol} at {price}')
         symbol = symbol.upper()
-        if symbol not in self.last_price:
+        if symbol not in self.last_price or self.last_price[symbol].close == 0:
             self.last_price[symbol] = TickBar(symbol, datetime.now(), price, price, price, price, price, 0)
 
     def __str__(self):

@@ -1,6 +1,6 @@
 from .markets import DataRequest, SymbolData, TickEvent, TickBar, WatchList, Resolution
 from .ibkr import IBApi
-from .util.timeutil import is_trading_day
+from .util import timeutil
 from .util.misc import decimal as d
 from .util import events
 from .console import console
@@ -14,6 +14,20 @@ import threading
 import os
 import pandas as pd
 from numpy import float64, int64
+
+
+def init_market_data(source, watchlist):
+    if source == 'random':
+        for symbol in watchlist.symbols():
+            price = YahooData.current_price(symbol)
+            console.announce(f'Looking up price of {symbol} from Yahoo: {price}')
+            watchlist.add_symbol(symbol, price)
+        RandomMarketData(watchlist).start()
+    elif source == 'live':
+        IBKRMarketData(watchlist).start()
+    else:
+        date = timeutil.parse_date(source)
+        IBKRHistoricalMarketData(watchlist, date, 'history').start()
 
 
 class YahooData:
@@ -57,7 +71,7 @@ class IBKRHistoricalMarketData:
 
     def __init__(self, watchlist: WatchList, start_date: datetime, cache_dir: str = None):
         self.watchlist = watchlist
-        if not is_trading_day(start_date):
+        if not timeutil.is_trading_day(start_date):
             raise ValueError(f'Date {start_date} is not a trading day. No historical data available')
         self.start_date = start_date
         self.data_cache = DataCache(cache_dir) if cache_dir else None

@@ -1,7 +1,7 @@
 from .broker import Broker, Position, Direction, OrderEvent
 from .console import console, Colors
-from .sources import RandomMarketData, YahooData, IBKRMarketData, IBKRHistoricalMarketData
-from .util import events, timeutil, Parser
+from .sources import init_market_data
+from .util import events, Parser
 from .markets import TickEvent, TickBar, WatchList
 from .fakebroker import FakeBroker
 from .ibkr import InteractiveBroker
@@ -136,8 +136,9 @@ def main():
     logging.getLogger('ibapi').setLevel(logging.WARN)
 
     watchlist = WatchList()
-    broker = init_broker(args, watchlist)
-    init_market_data(args, watchlist)
+    watchlist.add_symbol(args.symbol)
+    broker = init_broker(watchlist, use_fake=args.fake)
+    init_market_data(args.source, watchlist)
 
     direction = Direction.LONG if args.direction == 'buy' else Direction.SHORT
     position = Position(args.symbol.upper(), direction, args.quantity)
@@ -147,8 +148,8 @@ def main():
     run_command_loop(trader)
 
 
-def init_broker(args, watchlist):
-    if args.fake:
+def init_broker(watchlist, use_fake=False):
+    if use_fake:
         console.announce('Using FAKE broker')
         broker = FakeBroker(watchlist)
     else:
@@ -157,23 +158,6 @@ def init_broker(args, watchlist):
     console.announce('Starting the Broker interface')
     broker.start()
     return broker
-
-
-def init_market_data(args, watchlist):
-    symbol = args.symbol.upper()
-
-    if args.source == 'random':
-        price = YahooData.current_price(symbol)
-        console.announce(f'Looking up price of {symbol} from Yahoo: {price}')
-        watchlist.add_symbol(symbol, price)
-        RandomMarketData(watchlist).start()
-    elif args.source == 'live':
-        watchlist.add_symbol(symbol)
-        IBKRMarketData(watchlist).start()
-    else:
-        watchlist.add_symbol(symbol)
-        date = timeutil.parse_date(args.source)
-        IBKRHistoricalMarketData(watchlist, date, args.history).start()
 
 
 def run_command_loop(trader: Trader):
