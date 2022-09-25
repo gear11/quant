@@ -207,5 +207,8 @@ class WatchList:
         if symbol not in self.last_price or self.last_price[symbol].close == 0:
             self.last_price[symbol] = TickBar(symbol, datetime.now(), price, price, price, price, price, 0)
 
+    def remove_symbol(self, symbol):
+        del self.last_price[symbol]
+
     def __str__(self):
         return f'{self.last_price}'

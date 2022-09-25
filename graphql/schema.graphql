@@ -1,6 +1,7 @@
 schema {
     query: Query
     subscription: Subscription
+    mutation: Mutation
 }
 
 type Query {
@@ -11,6 +12,11 @@ type Query {
 type Subscription {
     counter: CounterResult!
     tickBars: TickBarResult!
+}
+
+type Mutation {
+    addSymbol(symbol: String!): WatchListResult!
+    removeSymbol(symbol: String!): WatchListResult!
 }
 
 type SymbolResult {

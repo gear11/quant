@@ -1,4 +1,4 @@
-from ariadne import QueryType, SubscriptionType
+from ariadne import QueryType, SubscriptionType, MutationType
 import random
 import asyncio
 from queue import Queue, Empty
@@ -17,18 +17,22 @@ class Resolver:
     def __init__(self, watchlist: WatchList):
         self.watchlist = watchlist
         query = QueryType()
-        query.set_field('listSymbols', self.list_symbols_resolver)
+        query.set_field('listSymbols', Resolver._list_symbols_resolver)
         query.set_field('getWatchList', self.get_watchlist_resolver)
+        mutation = MutationType()
+        mutation.set_field('addSymbol', self.add_symbol)
+        mutation.set_field('removeSymbol', self.remove_symbol)
         subscription = SubscriptionType()
-        subscription.set_source('counter', self.counter_source)
-        subscription.set_field('counter', self.counter_resolver)
-        subscription.set_source('tickBars', self.tick_bar_source)
-        subscription.set_field('tickBars', self.tick_bar_resolver)
+        subscription.set_source('counter', Resolver._counter_source)
+        subscription.set_field('counter', Resolver._counter_resolver)
+        subscription.set_source('tickBars', Resolver._tick_bar_source)
+        subscription.set_field('tickBars', Resolver._tick_bar_resolver)
 
         type_defs = load_schema_from_path('graphql/schema.graphql')
-        self.schema = make_executable_schema(type_defs, query, subscription)
+        self.schema = make_executable_schema(type_defs, query, subscription, mutation)
 
-    def list_symbols_resolver(self, *_):  # Noqa
+    @staticmethod
+    def _list_symbols_resolver(*_):
         count = random.randint(0, len(_symbols))
         cur_symbols = random.sample(_symbols, count)
         try:
@@ -59,32 +63,37 @@ class Resolver:
     ]
     """
     def get_watchlist_resolver(self, *_):
-        try:
-            payload = {
-                "success": True,
-                "items": [tick_bar.to_gql() for _, tick_bar in self.watchlist.items()]
-            }
-        except Exception as error:
-            print(error)
-            payload = {
+        return self._watchlist_payload()
+
+    def _watchlist_payload(self, error=None):
+        if error:
+            _log.error(error)
+            return {
                 "success": False,
                 "errors": [str(error)]
             }
-        _log.info(f'Returned watchlist {payload}')
+        payload = {
+                "success": True,
+                "items": [tick_bar.to_gql() for _, tick_bar in self.watchlist.items()]
+            }
+        _log.info(f'Watchlist {payload}')
         return payload
 
-    async def counter_source(self, *_):  # Noqa
+    @staticmethod
+    async def _counter_source(*_):
         i = 0
         while True:
             i += 1
             await asyncio.sleep(1)
             yield {'success': True, 'count': i}
 
-    def counter_resolver(self, count, _):  # Noqa
+    @staticmethod
+    def _counter_resolver(count, _):
         _log.debug(f'{count}')
         return count
 
-    async def tick_bar_source(self, *_):
+    @staticmethod
+    async def _tick_bar_source(*_):
         _log.info('New tick bar generator')
         queue = Queue()
 
@@ -99,7 +108,18 @@ class Resolver:
             except Empty:
                 await asyncio.sleep(1)
 
-    def tick_bar_resolver(self, tick_bar, _):
+    @staticmethod
+    def _tick_bar_resolver(tick_bar, _):
         print('Getting tick bars')
         print(f'{tick_bar}')
         return tick_bar
+
+    def add_symbol(self, _, __, symbol):
+        _log.warning(f'Adding ${symbol}')
+        self.watchlist.add_symbol(symbol)
+        return self._watchlist_payload()
+
+    def remove_symbol(self, _, __, symbol):
+        _log.warning(f'Removing ${symbol}')
+        self.watchlist.remove_symbol(symbol)
+        return self._watchlist_payload()
