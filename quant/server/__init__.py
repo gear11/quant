@@ -1,9 +1,13 @@
+from sqlite3 import Connection
+
 import uvicorn
 from ariadne.asgi.handlers import GraphQLWSHandler
 # from ariadne.asgi.handlers import GraphQLTransportWSHandler
 from ariadne.asgi import GraphQL
 import logging
+import sqlite3 as sl
 
+from ..service.symbol_search import SymbolSearchService
 from .resolver import Resolver
 from ..util import Parser, events
 from ..markets import WatchList, TickEvent
@@ -12,9 +16,8 @@ from ..sources import init_market_data
 _log = logging.getLogger(__name__)
 
 
-def run_server(watchlist, listen_port):
-    resolver = Resolver(watchlist)
-    app = GraphQL(resolver.schema,
+def run_server(res, listen_port):
+    app = GraphQL(res.schema,
                   websocket_handler=GraphQLWSHandler(),
                   debug=True)
     config = uvicorn.Config(app, port=listen_port, log_level='info', workers=4)
@@ -29,16 +32,17 @@ def main():
                         default='live')
     args = parser.parse_args()
 
+    con: Connection = sl.connect('sqlite/lookup/symbols.db')
+    con.row_factory = sl.Row
+
     watchlist = WatchList()
-    watchlist.add_symbol('MSFT', 0)
-    watchlist.add_symbol('INTU', 0)
-    watchlist.add_symbol('AAPL', 0)
-    watchlist.add_symbol('IBKR', 0)
-    watchlist.add_symbol('IBM', 0)
-    watchlist.add_symbol('AA', 0)
+    for symbol in ('MSFT', 'INTU', 'AAPL', 'IBKR', 'IBM', 'AA'):
+        watchlist.add_symbol(symbol, 0)
     init_market_data(args.source, watchlist)
     events.observe(TickEvent, _log.info)
-    run_server(watchlist, 5000)
+
+    res = Resolver(watchlist, SymbolSearchService(con))
+    run_server(res, 5000)
 
 
 if __name__ == "__main__":

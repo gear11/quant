@@ -7,6 +7,7 @@ schema {
 type Query {
     listSymbols: SymbolResult!
     getWatchList: WatchListResult!
+    searchSymbols(query: String!): SymbolSearchResult!
 }
 
 type Subscription {
@@ -17,6 +18,21 @@ type Subscription {
 type Mutation {
     addSymbol(symbol: String!): WatchListResult!
     removeSymbol(symbol: String!): WatchListResult!
+}
+
+type SymbolInfo {
+    symbol: String!
+    company_name: String!
+    industry: String
+    type: String!
+    exchange: String!
+    rank: Int
+}
+
+type SymbolSearchResult {
+    success: Boolean!
+    errors: [String]
+    symbols: [SymbolInfo]
 }
 
 type SymbolResult {

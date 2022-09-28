@@ -10,19 +10,20 @@ import time
 from datetime import datetime, timedelta
 import random
 import threading
+import logging
 
 import os
 import pandas as pd
 from numpy import float64, int64
 
+_log = logging.getLogger(__name__)
+
 
 def init_market_data(source, watchlist):
     if source == 'random':
         for symbol in watchlist.symbols():
-            price = YahooData.current_price(symbol)
-            console.announce(f'Looking up price of {symbol} from Yahoo: {price}')
-            watchlist.add_symbol(symbol, price)
-        RandomMarketData(watchlist).start()
+            watchlist.add_symbol(symbol, 0.0)
+        RandomMarketData(watchlist, YahooData.current_price).start()
     elif source == 'live':
         IBKRMarketData(watchlist).start()
     else:
@@ -45,6 +46,7 @@ class YahooData:
 
     @staticmethod
     def current_price(symbol: str):
+        _log.info(f'Fetching current price of {symbol}')
         end = datetime.now()
         start = end - timedelta(days=4)  # Handle long weekend
         df = YahooData.fetch(DataRequest(symbol, start, end))
@@ -142,9 +144,10 @@ class DataCache:
 
 class RandomMarketData:
 
-    def __init__(self, watchlist: WatchList, tick_interval=5):
-        self.tick_interval = tick_interval
+    def __init__(self, watchlist: WatchList, first_open, tick_interval=5):
         self.watchlist = watchlist
+        self.first_open = first_open
+        self.tick_interval = tick_interval
 
     @staticmethod
     def next_bar(symbol, prev_close) -> TickBar:
@@ -160,7 +163,12 @@ class RandomMarketData:
     def run(self):
         while True:
             for symbol, tick_bar in self.watchlist.items():
-                next_bar = self.next_bar(symbol, tick_bar.close)
+                close = tick_bar.close
+                if tick_bar.close == 0:
+                    _log.info(f'Looking up newly added symbol {symbol}')
+                    close = self.first_open(symbol)
+                    self.watchlist.add_symbol(symbol, close)
+                next_bar = self.next_bar(symbol, close)
                 events.emit(TickEvent(next_bar))
                 self.watchlist[symbol] = next_bar
             time.sleep(self.tick_interval)

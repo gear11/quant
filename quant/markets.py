@@ -47,6 +47,15 @@ class DataRequest(NamedTuple):
         return (delta.seconds + delta.days * 60 * 60 * 24) / self.resolution.value  # NOQA can't figure out enum
 
 
+class SymbolInfo(NamedTuple):
+    symbol: str
+    company_name: str
+    industry: str
+    type: str
+    exchange: str
+    rank: int
+
+
 class Symbols:
 
     @staticmethod
@@ -202,10 +211,13 @@ class WatchList:
 
     def add_symbol(self, symbol, price=0):
         price = d(price)
-        log.info(f'Adding {symbol} at {price}')
         symbol = symbol.upper()
-        if symbol not in self.last_price or self.last_price[symbol].close == 0:
-            self.last_price[symbol] = TickBar(symbol, datetime.now(), price, price, price, price, price, 0)
+        if (symbol not in self.last_price) or (self.last_price[symbol].close == 0):
+            tick_bar = TickBar(symbol, datetime.now(), price, price, price, price, price, 0)
+            log.info(f'Adding {symbol} at {tick_bar}')
+            self.last_price[symbol] = tick_bar
+        else:
+            log.info(f'Symbol {symbol} already present at {self.last_price[symbol].close}')
 
     def remove_symbol(self, symbol):
         del self.last_price[symbol]

@@ -7,8 +7,6 @@ import weakref
 
 log = logging.getLogger(__name__)
 
-print("LOADING EVENTS --------------------------------------------------")
-
 
 class Event(ABC):
     """Base class for all events"""""

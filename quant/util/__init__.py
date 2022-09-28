@@ -1,5 +1,8 @@
 import argparse
 import logging
+import util.timeutil as tu
+
+Timer = tu.Timer
 
 
 class Parser(argparse.ArgumentParser):
@@ -17,6 +20,6 @@ class Parser(argparse.ArgumentParser):
         logging.getLogger('root').setLevel(level)
         return parsed
 
-    def ignore_args(self):
-        self.add_argument('ignore', nargs='+', help='Ignored arguments')
+    def allow_additional_args(self):
+        self.add_argument('additional', nargs='+', help='Ignored arguments')
         return self

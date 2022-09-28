@@ -2,6 +2,8 @@ from ariadne import QueryType, SubscriptionType, MutationType
 import random
 import asyncio
 from queue import Queue, Empty
+
+from ..service.symbol_search import SymbolSearchService
 from ..markets import TickEvent, WatchList
 from ..util.events import observe
 import logging
@@ -14,29 +16,52 @@ _symbols = ('MSFT', 'AAPL', 'IBKR', 'TSLA', 'INTU', 'IBM', 'SWIR')
 
 class Resolver:
 
-    def __init__(self, watchlist: WatchList):
+    def __init__(self, watchlist: WatchList, symbol_search_service: SymbolSearchService):
         self.watchlist = watchlist
+        self.symbol_search_service = symbol_search_service
         query = QueryType()
-        query.set_field('listSymbols', Resolver._list_symbols_resolver)
-        query.set_field('getWatchList', self.get_watchlist_resolver)
+        query.set_field('listSymbols', Resolver._list_symbols)
+        query.set_field('searchSymbols', self._search_symbols)
+        query.set_field('getWatchList', self.get_watchlist)
         mutation = MutationType()
         mutation.set_field('addSymbol', self.add_symbol)
         mutation.set_field('removeSymbol', self.remove_symbol)
         subscription = SubscriptionType()
         subscription.set_source('counter', Resolver._counter_source)
-        subscription.set_field('counter', Resolver._counter_resolver)
+        subscription.set_field('counter', Resolver._counter)
         subscription.set_source('tickBars', Resolver._tick_bar_source)
-        subscription.set_field('tickBars', Resolver._tick_bar_resolver)
+        subscription.set_field('tickBars', Resolver._tick_bar)
 
         type_defs = load_schema_from_path('graphql/schema.graphql')
         self.schema = make_executable_schema(type_defs, query, subscription, mutation)
 
+    def _search_symbols(self, *_, query=None):
+        result, error = None, None
+        try:
+            result = self.symbol_search_service.search_symbols(query)
+        except Exception as e:
+            error = e
+        _log.warning(result)
+        return Resolver._payload('symbols', result, error)
+
     @staticmethod
-    def _list_symbols_resolver(*_):
+    def _payload(result_name, result, error):
+        if result is not None:
+            return {
+                "success": True,
+                result_name: result
+            }
+        _log.warning(f'Error producing {result_name}: {error}')
+        return {
+            "success": False,
+            "errors": [str(error)]
+        }
+
+    @staticmethod
+    def _list_symbols(*_):
         count = random.randint(0, len(_symbols))
         cur_symbols = random.sample(_symbols, count)
         try:
-            print(cur_symbols)
             payload = {
                 "success": True,
                 "symbols": [{'name': s} for s in cur_symbols]
@@ -62,7 +87,7 @@ class Resolver:
         }
     ]
     """
-    def get_watchlist_resolver(self, *_):
+    def get_watchlist(self, *_):
         return self._watchlist_payload()
 
     def _watchlist_payload(self, error=None):
@@ -88,7 +113,7 @@ class Resolver:
             yield {'success': True, 'count': i}
 
     @staticmethod
-    def _counter_resolver(count, _):
+    def _counter(count, _):
         _log.debug(f'{count}')
         return count
 
@@ -109,17 +134,17 @@ class Resolver:
                 await asyncio.sleep(1)
 
     @staticmethod
-    def _tick_bar_resolver(tick_bar, _):
+    def _tick_bar(tick_bar, _):
         print('Getting tick bars')
         print(f'{tick_bar}')
         return tick_bar
 
     def add_symbol(self, _, __, symbol):
-        _log.warning(f'Adding ${symbol}')
+        _log.warning(f'Adding symbol {symbol}')
         self.watchlist.add_symbol(symbol)
         return self._watchlist_payload()
 
     def remove_symbol(self, _, __, symbol):
-        _log.warning(f'Removing ${symbol}')
+        _log.warning(f'Removing symbol {symbol}')
         self.watchlist.remove_symbol(symbol)
         return self._watchlist_payload()
