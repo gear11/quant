@@ -7,10 +7,11 @@ from ariadne.asgi import GraphQL
 import logging
 import sqlite3 as sl
 
+from ..service.watchlist import WatchListService
 from ..service.symbol_search import SymbolSearchService
 from .resolver import Resolver
 from ..util import Parser, events
-from ..markets import WatchList, TickEvent
+from ..markets import TickEvent
 from ..sources import init_market_data
 
 _log = logging.getLogger(__name__)
@@ -35,13 +36,11 @@ def main():
     con: Connection = sl.connect('sqlite/lookup/symbols.db')
     con.row_factory = sl.Row
 
-    watchlist = WatchList()
-    for symbol in ('MSFT', 'INTU', 'AAPL', 'IBKR', 'IBM', 'AA'):
-        watchlist.add_symbol(symbol, 0)
-    init_market_data(args.source, watchlist)
+    watchlist_service = WatchListService()
+    init_market_data(args.source, watchlist_service.load())
     events.observe(TickEvent, _log.info)
 
-    res = Resolver(watchlist, SymbolSearchService(con))
+    res = Resolver(watchlist_service, SymbolSearchService(con))
     run_server(res, 5000)
 
 

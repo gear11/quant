@@ -1,8 +1,8 @@
 import argparse
 import logging
-import util.timeutil as tu
+from .timeutil import Timer as UtilTimer
 
-Timer = tu.Timer
+Timer = UtilTimer
 
 
 class Parser(argparse.ArgumentParser):

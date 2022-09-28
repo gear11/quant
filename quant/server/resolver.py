@@ -3,8 +3,9 @@ import random
 import asyncio
 from queue import Queue, Empty
 
+from ..service.watchlist import WatchListService
 from ..service.symbol_search import SymbolSearchService
-from ..markets import TickEvent, WatchList
+from ..markets import TickEvent
 from ..util.events import observe
 import logging
 from ariadne import make_executable_schema, load_schema_from_path
@@ -16,8 +17,9 @@ _symbols = ('MSFT', 'AAPL', 'IBKR', 'TSLA', 'INTU', 'IBM', 'SWIR')
 
 class Resolver:
 
-    def __init__(self, watchlist: WatchList, symbol_search_service: SymbolSearchService):
-        self.watchlist = watchlist
+    def __init__(self, watchlist_service: WatchListService, symbol_search_service: SymbolSearchService):
+        self.watchlist_service = watchlist_service
+        self.watchlist = watchlist_service.load()
         self.symbol_search_service = symbol_search_service
         query = QueryType()
         query.set_field('listSymbols', Resolver._list_symbols)
@@ -142,9 +144,11 @@ class Resolver:
     def add_symbol(self, _, __, symbol):
         _log.warning(f'Adding symbol {symbol}')
         self.watchlist.add_symbol(symbol)
+        self.watchlist_service.save(self.watchlist)
         return self._watchlist_payload()
 
     def remove_symbol(self, _, __, symbol):
         _log.warning(f'Removing symbol {symbol}')
         self.watchlist.remove_symbol(symbol)
+        self.watchlist_service.save(self.watchlist)
         return self._watchlist_payload()

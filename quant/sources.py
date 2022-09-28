@@ -164,7 +164,7 @@ class RandomMarketData:
         while True:
             for symbol, tick_bar in self.watchlist.items():
                 close = tick_bar.close
-                if tick_bar.close == 0:
+                if int(tick_bar.close) == 0:
                     _log.info(f'Looking up newly added symbol {symbol}')
                     close = self.first_open(symbol)
                     self.watchlist.add_symbol(symbol, close)

@@ -183,9 +183,12 @@ class WatchList:
     A dictionary-like object for storing most recent price (bar) data.
     Auto-subscribed to tick bar events
     """
-    def __init__(self):
+    def __init__(self, symbols=None):
         self.last_price: dict[str, TickBar] = {}
         observe(TickEvent, lambda event: self.__setitem__(event.tick_bar.symbol, event.tick_bar))
+        if symbols is not None:
+            for s in symbols:
+                self.add_symbol(s)
 
     def __setitem__(self, symbol, last_price: TickBar):
         log.debug(f'Updating watchlist tickbar: {last_price}')
@@ -199,6 +202,9 @@ class WatchList:
 
     def __contains__(self, item):
         return self.last_price.__contains__(item)
+
+    def __eq__(self, other):
+        return type(other) == type(self) and self.last_price.keys() == other.last_price.keys()
 
     def items(self):
         return self.last_price.items()
