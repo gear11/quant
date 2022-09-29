@@ -5,7 +5,7 @@ from .broker import Broker, Position, Direction, Order as BrokerOrder, OrderStat
 from .util.timeutil import spans_days, count_trading_days, parse_date, Waiter
 from .util.misc import decimal as d
 from .markets import Resolution, WatchList, DataRequest, SymbolData, Symbols, TickEvent, TickBar
-from .util import events
+from .util import events, reverse
 from .util.timeutil import Timer
 from .console import console
 
@@ -99,8 +99,7 @@ class IBApi(EWrapper, EClient):
         self.order_listeners = {}
         self.is_connected = False
         self.req_id = 0
-        self.request_data = {}
-        self.realtime_subs = set()
+        self.req_ids = {}  # Request IDs by sub
 
     def start(self):
         if not self.is_connected:
@@ -142,21 +141,32 @@ class IBApi(EWrapper, EClient):
         self.placeOrder(order_id, contract_for(position.symbol), order)
         return broker_order
 
-    def subscribe_realtime(self, symbol):
-        if symbol in self.realtime_subs:
-            raise ValueError(f'Already subscribed to {symbol}')
+    def subscribed(self):
+        return self.req_ids.values()
 
+    def subscribe_realtime(self, symbol):
+        if symbol in self.req_ids.values():
+            raise ValueError(f'Already subscribed to {symbol}')
         console.announce(f'Subscribing to realtime data for {symbol}')
         contract = contract_for(symbol)
         what_to_show = 'MIDPOINT' if Symbols.is_forex(symbol) else 'TRADES'
         req_id = self.next_request_id()
-        self.request_data[req_id] = symbol
+        self.req_ids[req_id] = symbol
         console.announce(f'Requesting realtime data for {symbol} via req_id {req_id}')
         self.reqRealTimeBars(req_id, contract, 5, what_to_show, False, [])
 
+    def unsubscribe_realtime(self, symbol):
+        req_ids = reverse(self.req_ids)
+        if symbol not in req_ids:
+            raise ValueError(f'Not subscribed to {symbol}')
+        console.announce(f'Unsubscribing to realtime data for {symbol}')
+        req_id = req_ids[symbol]
+        self.cancelRealTimeBars(req_id)
+        del self.req_ids[req_id]
+
     def realtimeBar(self, req_id: TickerId, date: int, open_: float, high: float, low: float, close: float,
                     volume: int, wap: float, count: int):
-        symbol = self.request_data[req_id]
+        symbol = self.req_ids[req_id]
         tick_bar = IBApi.to_tick_bar(symbol, date, open_, high, low, close, wap, volume)
         events.emit(TickEvent(tick_bar))
 
@@ -172,7 +182,7 @@ class IBApi(EWrapper, EClient):
         symbol_data = SymbolData(request.symbol)
         wait_time = 30
         waiter = Waiter(wait_time)
-        self.request_data[req_id] = (request, symbol_data, waiter)
+        self.req_ids[req_id] = (request, symbol_data, waiter)
         console.announce(f'Requesting historical data. IBKR request:'
                          f' req_id: {req_id} query_time: {query_time} duration: {duration} bar_size: {bar_size}')
         self.reqHistoricalData(req_id, contract, query_time, duration, bar_size, what_to_show, 1, 1, False, [])
@@ -186,7 +196,7 @@ class IBApi(EWrapper, EClient):
     def historicalData(self, req_id, bar: BarData):
         super().historicalData(req_id, bar)
         log.debug(f'Received historical data: {bar!r}')
-        request, symbol_data, _ = self.request_data[req_id]
+        request, symbol_data, _ = self.req_ids[req_id]
         date = parse_date(bar.date).astimezone()
         if request.start <= date:
             tick_bar = IBApi.to_tick_bar(request.symbol, date, bar.open, bar.high, bar.low, bar.close, bar.average,
@@ -195,7 +205,7 @@ class IBApi(EWrapper, EClient):
 
     def historicalDataEnd(self, req_id: int, start: str, end: str):
         super().historicalDataEnd(req_id, start, end)
-        request, data, waiter = self.request_data.pop(req_id)
+        request, data, waiter = self.req_ids.pop(req_id)
         console.announce(f'Completed historical data request ({len(data)} results): {request}')
         waiter.done()
 

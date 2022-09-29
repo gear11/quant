@@ -1,7 +1,7 @@
 from sqlite3 import Connection
 
 import uvicorn
-from ariadne.asgi.handlers import GraphQLWSHandler
+from ariadne.asgi.handlers import GraphQLWSHandler, GraphQLHTTPHandler
 # from ariadne.asgi.handlers import GraphQLTransportWSHandler
 from ariadne.asgi import GraphQL
 import logging
@@ -19,9 +19,10 @@ _log = logging.getLogger(__name__)
 
 def run_server(res, listen_port):
     app = GraphQL(res.schema,
-                  websocket_handler=GraphQLWSHandler(),
+                  http_handler=GraphQLHTTPHandler(),
+                  websocket_handler=GraphQLWSHandler(keepalive=5),
                   debug=True)
-    config = uvicorn.Config(app, port=listen_port, log_level='info', workers=4)
+    config = uvicorn.Config(app, port=listen_port, log_level='info', workers=4, ws_ping_interval=3, timeout_keep_alive=60)
     server = uvicorn.Server(config)
     server.run()
 
@@ -37,7 +38,7 @@ def main():
     con.row_factory = sl.Row
 
     watchlist_service = WatchListService()
-    init_market_data(args.source, watchlist_service.load())
+    init_market_data(args.source, watchlist_service)
     events.observe(TickEvent, _log.info)
 
     res = Resolver(watchlist_service, SymbolSearchService(con))

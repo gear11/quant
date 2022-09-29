@@ -8,12 +8,24 @@ _log = logging.getLogger(__name__)
 
 class WatchListService:
     def __init__(self):
+        self._watchlist = None
         pass
 
-    def load(self) -> WatchList:
-        return watchlist_load()
+    @property
+    def watchlist(self) -> WatchList:
+        if not self._watchlist:
+            self._load()
+        return self._watchlist
+
+    def _load(self):
+        self._watchlist = watchlist_load()
+        _log.info(f'Loaded watchlist {self._watchlist}')
+        return self._watchlist
 
     def save(self, watchlist: WatchList):
+        if watchlist is not self._watchlist:
+            self._watchlist.items = watchlist.items
+        _log.info(f'Saving watchlist {watchlist}')
         watchlist_save(watchlist)
 
 
@@ -21,7 +33,7 @@ def store_and_retrieve(symbols):
     watchlist = WatchList(symbols)
     WatchListService().save(watchlist)
 
-    retrieved = WatchListService().load()
+    retrieved = WatchListService().watchlist
     assert watchlist == retrieved
     return watchlist
 

@@ -1,8 +1,8 @@
-from .markets import DataRequest, SymbolData, TickEvent, TickBar, WatchList, Resolution
+from .service.watchlist import WatchListService
+from .markets import DataRequest, SymbolData, TickEvent, TickBar, Resolution
 from .ibkr import IBApi
-from .util import timeutil
+from .util import timeutil, diff, events
 from .util.misc import decimal as d
-from .util import events
 from .console import console
 
 import pandas_datareader as pdr
@@ -19,16 +19,15 @@ from numpy import float64, int64
 _log = logging.getLogger(__name__)
 
 
-def init_market_data(source, watchlist):
+def init_market_data(source, watchlist_service):
+
     if source == 'random':
-        for symbol in watchlist.symbols():
-            watchlist.add_symbol(symbol, 0.0)
-        RandomMarketData(watchlist, YahooData.current_price).start()
+        RandomMarketData(watchlist_service, YahooData.current_price).start()
     elif source == 'live':
-        IBKRMarketData(watchlist).start()
+        IBKRMarketData(watchlist_service).start()
     else:
         date = timeutil.parse_date(source)
-        IBKRHistoricalMarketData(watchlist, date, 'history').start()
+        IBKRHistoricalMarketData(watchlist_service, date, 'history').start()
 
 
 class YahooData:
@@ -71,8 +70,8 @@ class IBKRData:
 
 class IBKRHistoricalMarketData:
 
-    def __init__(self, watchlist: WatchList, start_date: datetime, cache_dir: str = None):
-        self.watchlist = watchlist
+    def __init__(self, watchlist_service: WatchListService, start_date: datetime, cache_dir: str = None):
+        self.watchlist = watchlist_service.watchlist
         if not timeutil.is_trading_day(start_date):
             raise ValueError(f'Date {start_date} is not a trading day. No historical data available')
         self.start_date = start_date
@@ -92,7 +91,7 @@ class IBKRHistoricalMarketData:
                             self.data_cache.save(symbol_data)
                     tick_bars[symbol] = (symbol_data, symbol_data.tick_bars())
                 try:
-                    events.emit(TickEvent(tick_bars[symbol][1].__next__()))
+                    events.emit(TickEvent((tick_bars[symbol][1]).__next__()))
                 except StopIteration:
                     console.warn('Replaying data')
                     tick_bars[symbol] = (tick_bars[symbol][0], tick_bars[symbol][0].tick_bars())
@@ -144,8 +143,8 @@ class DataCache:
 
 class RandomMarketData:
 
-    def __init__(self, watchlist: WatchList, first_open, tick_interval=5):
-        self.watchlist = watchlist
+    def __init__(self, watchlist_service: WatchListService, first_open, tick_interval=5):
+        self.watchlist = watchlist_service.watchlist
         self.first_open = first_open
         self.tick_interval = tick_interval
 
@@ -180,16 +179,16 @@ class RandomMarketData:
 
 class IBKRMarketData:
 
-    def __init__(self, watchlist: WatchList):
-        self.watchlist = watchlist
-        self.subscribed = set()
+    def __init__(self, watchlist_service: WatchListService):
+        self.watchlist = watchlist_service.watchlist
 
     def run(self):
         while True:
-            for symbol in self.watchlist.symbols():
-                if symbol not in self.subscribed:
-                    IBApi.instance().subscribe_realtime(symbol)
-                    self.subscribed.add(symbol)
+            added, removed = diff(IBApi.instance().subscribed(), self.watchlist.symbols())
+            for symbol in added:
+                IBApi.instance().subscribe_realtime(symbol)
+            for symbol in removed:
+                IBApi.instance().unsubscribe_realtime(symbol)
             time.sleep(1)
 
     def start(self):

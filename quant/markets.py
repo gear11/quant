@@ -78,8 +78,8 @@ class TickBar(NamedTuple):
     volume: int
 
     @staticmethod
-    def new(symbol: str, date: datetime, open: float, high: float, low: float, close: float, wap: float, volume: int):
-        return TickBar(symbol, date, d(open), d(high), d(low), d(close), d(wap), volume)
+    def new(symbol: str, date: datetime, open_: float, high: float, low: float, close: float, wap: float, volume: int):
+        return TickBar(symbol, date, d(open_), d(high), d(low), d(close), d(wap), volume)
 
     def to_gql(self):
         return {
@@ -206,6 +206,10 @@ class WatchList:
     def __eq__(self, other):
         return type(other) == type(self) and self.last_price.keys() == other.last_price.keys()
 
+    def __repr__(self):
+        symbols = list(self.last_price.keys())
+        return f'WatchList({symbols})'
+
     def items(self):
         return self.last_price.items()
 
@@ -229,4 +233,4 @@ class WatchList:
         del self.last_price[symbol]
 
     def __str__(self):
-        return f'{self.last_price}'
+        return self.__repr__()

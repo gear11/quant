@@ -19,7 +19,7 @@ class Resolver:
 
     def __init__(self, watchlist_service: WatchListService, symbol_search_service: SymbolSearchService):
         self.watchlist_service = watchlist_service
-        self.watchlist = watchlist_service.load()
+        self.watchlist = watchlist_service.watchlist
         self.symbol_search_service = symbol_search_service
         query = QueryType()
         query.set_field('listSymbols', Resolver._list_symbols)

@@ -1,8 +1,21 @@
 import argparse
 import logging
+from collections.abc import Set, Iterable
+from typing import Dict
+
 from .timeutil import Timer as UtilTimer
 
 Timer = UtilTimer
+
+
+def diff(a: Iterable, b: Iterable) -> (Set, Set):
+    added = [e for e in b if e not in set(a)]
+    removed = [e for e in a if e not in set(b)]
+    return added, removed
+
+
+def reverse(d: Dict) -> Dict:
+    return {v: k for k, v in d.items()}
 
 
 class Parser(argparse.ArgumentParser):
