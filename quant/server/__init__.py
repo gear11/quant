@@ -6,6 +6,8 @@ from ariadne.asgi.handlers import GraphQLWSHandler, GraphQLHTTPHandler
 from ariadne.asgi import GraphQL
 import logging
 import sqlite3 as sl
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
 from ..service.watchlist import WatchListService
 from ..service.symbol_search import SymbolSearchService
@@ -36,12 +38,16 @@ def main():
 
     con: Connection = sl.connect('sqlite/lookup/symbols.db')
     con.row_factory = sl.Row
+    search_service = SymbolSearchService(con)
 
-    watchlist_service = WatchListService()
+    engine = create_engine("sqlite:///sqlite/scanner/scanner.db", echo=_log.level == logging.DEBUG, future=True)
+    session = sessionmaker(bind=engine, future=True)()
+    watchlist_service = WatchListService(session)
+
     init_market_data(args.source, watchlist_service)
     events.observe(TickEvent, _log.info)
 
-    res = Resolver(watchlist_service, SymbolSearchService(con))
+    res = Resolver(watchlist_service, search_service)
     run_server(res, 5000)
 
 
