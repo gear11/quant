@@ -1,5 +1,5 @@
 from .broker import Broker, Position, Direction, OrderEvent
-from .console import console, Colors
+from util.console import console, Colors
 from .sources import init_market_data
 from .util import events, Parser
 from .markets import TickEvent, TickBar, WatchList

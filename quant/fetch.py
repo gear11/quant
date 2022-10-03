@@ -11,7 +11,7 @@ from .markets import DataRequest, Resolution
 from pandas import DataFrame
 from functools import partial
 from .util.timeutil import Timer
-from .console import console
+from util.console import console
 
 
 _fetchers = {

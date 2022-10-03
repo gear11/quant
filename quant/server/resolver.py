@@ -103,7 +103,7 @@ class Resolver:
                 "success": True,
                 "items": [tick_bar.to_gql() for _, tick_bar in self.watchlist.items()]
             }
-        _log.info(f'Watchlist {payload}')
+        _log.debug(f'Watchlist {payload}')
         return payload
 
     @staticmethod

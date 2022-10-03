@@ -1,9 +1,8 @@
 from .service.watchlist import WatchListService
 from .markets import DataRequest, SymbolData, TickEvent, TickBar, Resolution
 from .ibkr import IBApi
-from .util import timeutil, diff, events
+from .util import timeutil, diff, events, console
 from .util.misc import decimal as d
-from .console import console
 
 import pandas_datareader as pdr
 import time

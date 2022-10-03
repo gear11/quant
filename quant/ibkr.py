@@ -7,7 +7,6 @@ from .util.misc import decimal as d
 from .markets import Resolution, WatchList, DataRequest, SymbolData, Symbols, TickEvent, TickBar
 from .util import events, reverse
 from .util.timeutil import Timer
-from .console import console
 
 from ibapi.client import EClient
 from ibapi.commission_report import CommissionReport
@@ -22,7 +21,7 @@ import logging
 from typing import Callable
 
 
-log = logging.getLogger(__name__)
+_log = logging.getLogger(__name__)
 logging.getLogger('ibapi').setLevel(logging.INFO)
 
 LIVE_TRADING_PORT = 7496
@@ -45,7 +44,7 @@ class InteractiveBroker(Broker):
     def cancel_pending_orders(self):
         for order in self.book:
             if order.is_cancellable():
-                console.announce(f'Cancelling pending order {order}')
+                _log.info(f'Cancelling pending order {order}')
                 self.ib.cancelOrder(order.order_id)
 
     def place_order(self, position: Position) -> BrokerOrder:
@@ -55,16 +54,16 @@ class InteractiveBroker(Broker):
 
     def on_order_status(self, order_id, status, filled: float, avg_fill_price: float):
         status = to_order_status(status)
-        console.warn(f'Received open order status: {order_id} {status} {filled} {avg_fill_price} {status}')
+        _log.info(f'Received open order status: {order_id} {status} {filled} {avg_fill_price} {status}')
         try:
             order, index = self.book.by_order_id(order_id)
             if type(filled) is float and not filled.is_integer():
-                console.warn('Fractional order fill!')
+                _log.warning('Fractional order fill!')
             order = order.update_status(status, d(avg_fill_price), filled)
             self.book[index] = order
             events.emit(OrderEvent(order))
         except KeyError:
-            console.warn(f'Received unknown open order status: {order_id} {status} {filled} {avg_fill_price}')
+            _log.warning(f'Received unknown open order status: {order_id} {status} {filled} {avg_fill_price}')
 
 
 def to_order_status(status: str) -> OrderStatus:
@@ -77,7 +76,7 @@ def to_order_status(status: str) -> OrderStatus:
     elif status in ('Cancelled', 'ApiCancelled', 'Inactive'):
         return OrderStatus.CANCELLED
     else:
-        console.warn(f'Unrecognized order status from IB API: {status}')
+        _log.warning(f'Unrecognized order status from IB API: {status}')
         return OrderStatus.UNKNOWN
 
 
@@ -105,18 +104,18 @@ class IBApi(EWrapper, EClient):
         if not self.is_connected:
             self.connect('127.0.0.1', SIMULATED_TRADING_PORT, CONNECTION_ID)
         if not self.thread_running:
-            console.announce('Starting IB Thread')
+            _log.info('Starting IB Thread')
             ib_thread = threading.Thread(target=self.run, daemon=True)
             ib_thread.start()
             t = Timer()
             while not self.thread_running:
                 if t.total() > 10:
-                    console.error('Unable to start IB Thread')
+                    _log.error('Unable to start IB Thread')
                     return False
                 time.sleep(.1)
             return True
         else:
-            console.announce('IB Thread already started')
+            _log.info('IB Thread already started')
             return False
 
     def shutdown(self):
@@ -147,19 +146,19 @@ class IBApi(EWrapper, EClient):
     def subscribe_realtime(self, symbol):
         if symbol in self.req_ids.values():
             raise ValueError(f'Already subscribed to {symbol}')
-        console.announce(f'Subscribing to realtime data for {symbol}')
+        _log.info(f'Subscribing to realtime data for {symbol}')
         contract = contract_for(symbol)
         what_to_show = 'MIDPOINT' if Symbols.is_forex(symbol) else 'TRADES'
         req_id = self.next_request_id()
         self.req_ids[req_id] = symbol
-        console.announce(f'Requesting realtime data for {symbol} via req_id {req_id}')
+        _log.info(f'Requesting realtime data for {symbol} via req_id {req_id}')
         self.reqRealTimeBars(req_id, contract, 5, what_to_show, False, [])
 
     def unsubscribe_realtime(self, symbol):
         req_ids = reverse(self.req_ids)
         if symbol not in req_ids:
             raise ValueError(f'Not subscribed to {symbol}')
-        console.announce(f'Unsubscribing to realtime data for {symbol}')
+        _log.info(f'Unsubscribing to realtime data for {symbol}')
         req_id = req_ids[symbol]
         self.cancelRealTimeBars(req_id)
         del self.req_ids[req_id]
@@ -172,7 +171,7 @@ class IBApi(EWrapper, EClient):
 
     def req_historical_data(self, request: DataRequest) -> SymbolData:
         """Blocking call to underlying API"""
-        console.announce(f'Requesting historical data. Original request: {request}')
+        _log.info(f'Requesting historical data. Original request: {request}')
         contract = contract_for(request.symbol)
         query_time = request.end.strftime("%Y%m%d-%H:%M:%S")
         duration = to_time_string(request.start, request.end)
@@ -183,19 +182,19 @@ class IBApi(EWrapper, EClient):
         wait_time = 30
         waiter = Waiter(wait_time)
         self.req_ids[req_id] = (request, symbol_data, waiter)
-        console.announce(f'Requesting historical data. IBKR request:'
-                         f' req_id: {req_id} query_time: {query_time} duration: {duration} bar_size: {bar_size}')
+        _log.info(f'Requesting historical data. IBKR request:'
+                  f' req_id: {req_id} query_time: {query_time} duration: {duration} bar_size: {bar_size}')
         self.reqHistoricalData(req_id, contract, query_time, duration, bar_size, what_to_show, 1, 1, False, [])
         while waiter.still_waiting():
             time.sleep(1)
         if waiter.expired():
-            console.warn(f'Historical data request failed to complete in {wait_time}s, results may be incomplete'
+            _log.warning(f'Historical data request failed to complete in {wait_time}s, results may be incomplete'
                          f' ({len(symbol_data)} tick bars).')
         return symbol_data
 
     def historicalData(self, req_id, bar: BarData):
         super().historicalData(req_id, bar)
-        log.debug(f'Received historical data: {bar!r}')
+        _log.debug(f'Received historical data: {bar!r}')
         request, symbol_data, _ = self.req_ids[req_id]
         date = parse_date(bar.date).astimezone()
         if request.start <= date:
@@ -206,12 +205,12 @@ class IBApi(EWrapper, EClient):
     def historicalDataEnd(self, req_id: int, start: str, end: str):
         super().historicalDataEnd(req_id, start, end)
         request, data, waiter = self.req_ids.pop(req_id)
-        console.announce(f'Completed historical data request ({len(data)} results): {request}')
+        _log.info(f'Completed historical data request ({len(data)} results): {request}')
         waiter.done()
 
     def error(self, req_id: TickerId, error_code: int, error_str: str):
         super().error(req_id, error_code, error_str)
-        console.error(f'Error. Id:{req_id}, Code: {error_code}, Msg:, {error_str}')
+        _log.error(f'Error. Id:{req_id}, Code: {error_code}, Msg:, {error_str}')
 
     @staticmethod
     def _bar_size(resolution: Resolution):
@@ -226,7 +225,7 @@ class IBApi(EWrapper, EClient):
         return bar_sizes[resolution]
 
     def nextValidId(self, order_id):
-        console.announce(f'Connection ready. Next valid ID: {order_id}')
+        _log.info(f'Connection ready. Next valid ID: {order_id}')
         EWrapper.nextValidId(self, order_id)
         self.order_id = order_id
         self.thread_running = True
@@ -242,7 +241,7 @@ class IBApi(EWrapper, EClient):
     def orderStatus(self, order_id: OrderId, status: str, filled: float, remaining: float, avg_fill_price: float,
                     perm_id: int, parent_id: int, last_fill_price: float, client_id: int, why_held: str,
                     mkt_cap_price: float):
-        console.warn(f'Received IB order status {order_id} {status}')
+        _log.info(f'Received IB order status {order_id} {status}')
         super().orderStatus(order_id, status, filled, remaining, avg_fill_price, perm_id, parent_id, last_fill_price,
                             client_id, why_held, mkt_cap_price)
         self.order_listeners[order_id](order_id, status, filled, avg_fill_price)

@@ -1,7 +1,7 @@
 """
  Functions for colored and bold output to the console
 """
-from .markets import TickBar
+from ..markets import TickBar
 
 from decimal import Decimal
 from pandas import DataFrame
@@ -15,14 +15,15 @@ class Colors:
     BLUE = '\033[94m'
     CYAN = '\033[96m'
     GREEN = '\033[92m'
-    WARNING = '\033[93m'
+    YELLOW = '\033[93m'
+    GRAY = '\033[97m'
     RED = '\033[91m'
     END = '\033[0m'
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
 
 
-class console: # NOQA
+class Console:
     @classmethod
     def wrap(cls, msg, color: str):
         return f'{color}{msg}{Colors.END}'
