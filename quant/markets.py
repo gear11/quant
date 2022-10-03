@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from .util.events import Event, observe
 from .util.misc import decimal as d
+from .util import console
 
 import pandas as pd
 from decimal import Decimal
@@ -234,3 +235,18 @@ class WatchList:
 
     def __str__(self):
         return self.__repr__()
+
+
+def render_bar(bar: TickBar, prev_close=None, prev_wap=None):
+    return render_bar_data(bar.symbol, bar.date, bar.open, bar.high, bar.low, bar.close, bar.wap, bar.volume,
+                           prev_close, prev_wap)
+
+
+def render_bar_data(symbol, date, open_, high, low, close, ref_price, volume, prev_close=None, prev_ref_price=None):
+    date_str = date.strftime("%Y-%m-%d %H:%M:%S")
+    close_str = console.render_val(close, prev_close if prev_close else open_)
+    ref_price_str = console.render_val(ref_price, prev_ref_price if prev_ref_price else ref_price, bold=True)
+    return f'{date_str} {symbol} {ref_price_str}' \
+           f' O{console.render_val(open_)}-H{console.render_val(high, open_)}' \
+           f'-L{console.render_val(low, open_)}-C{close_str}' \
+           f' {volume: >4}'

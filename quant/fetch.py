@@ -11,7 +11,8 @@ from .markets import DataRequest, Resolution
 from pandas import DataFrame
 from functools import partial
 from .util.timeutil import Timer
-from util.console import console
+from datetime import datetime
+from .markets import render_bar_data
 
 
 _fetchers = {
@@ -59,7 +60,7 @@ def main():
             data_frames.append(fetch(args.source, symbol, args.start, args.end, args.resolution))
     for index, df in enumerate(data_frames):
         print(f'{df.shape[0]} {args.resolution.name.lower()}(s) of data for {args.symbols[index].upper()}:')
-        console.print_data_frame(args.symbols[index], df)
+        print_data_frame(args.symbols[index], df)
 
 
 def argconv(**convs):
@@ -71,6 +72,20 @@ def argconv(**convs):
             choices = ", ".join(sorted(repr(choice) for choice in convs.keys()))
             raise argparse.ArgumentTypeError(msg.format(arg, choices))
     return parse_argument
+
+
+def print_data_frame(symbol, df: DataFrame, verbose=False):
+    prev_close = None
+    prev_ref_price = None
+    for index, row in df.iterrows():
+        date = index if type(index) is datetime else dateparser.parse(str(index))
+        args = [row[label] for label in df]
+        args.extend([prev_close, prev_ref_price])
+        print(render_bar_data(symbol.upper(), date, *args))
+        prev_close = row['Close']
+        prev_ref_price = row[4]
+    if verbose:
+        print(df.describe(include='all'))
 
 
 if __name__ == "__main__":
