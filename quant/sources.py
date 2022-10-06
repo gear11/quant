@@ -1,5 +1,5 @@
 from .markets import DataRequest, SymbolData, TickEvent, TickBar, Resolution, WatchList
-from .ibkr import IBApi, exec_broker_call
+from .ibkr import BrokerContext, IBApi
 from .util import timeutil, diff, events, console
 from .util.misc import decimal as d
 
@@ -54,9 +54,8 @@ class IBKRData:
 
     @staticmethod
     def fetch_symbol_data(request: DataRequest) -> SymbolData:
-        def req_historical_data(broker: IBApi):
-            return broker.req_historical_data(request)
-        symbol_data = exec_broker_call(req_historical_data)
+        with BrokerContext() as broker:
+            symbol_data = broker.req_historical_data(request)
         console.announce(f'Received {len(symbol_data)} tick bars')
         return symbol_data
 

@@ -2,11 +2,12 @@
  Interactive Broker API Wrapper and Broker based on that API
 """
 from .broker import Broker, Position, Direction, Order as BrokerOrder, OrderStatus, OrderEvent
-from .util.timeutil import spans_days, count_trading_days, parse_date, Waiter
+from .util.timeutil import spans_days, count_trading_days, parse_date
 from .util.misc import decimal as d
 from .markets import Resolution, WatchList, DataRequest, SymbolData, Symbols, TickEvent, TickBar
-from .util import events
+from .util import events, channels
 from .util.timeutil import Timer
+from .util.channel import CallChannels
 
 from ibapi.client import EClient
 from ibapi.commission_report import CommissionReport
@@ -29,12 +30,17 @@ SIMULATED_TRADING_PORT = 7497
 CONNECTION_ID = 1
 
 
-def exec_broker_call(broker_callable):
-    started = IBApi.instance().start()
-    result = broker_callable(IBApi.instance())
-    if started:
-        IBApi.instance().shutdown()
-    return result
+class BrokerContext:
+    def __init__(self):
+        self.started = False
+
+    def __enter__(self):
+        self.started = IBApi.instance().start()
+        return IBApi.instance()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.started:
+            IBApi.instance().shutdown()
 
 
 class InteractiveBroker(Broker):
@@ -60,7 +66,8 @@ class InteractiveBroker(Broker):
         self.book.append(order)
         return order
 
-    def on_order_status(self, order_id, status, filled: float, avg_fill_price: float):
+    def on_order_status(self, order_data):
+        order_id, status, filled, avg_fill_price = order_data
         status = to_order_status(status)
         _log.info(f'Received open order status: {order_id} {status} {filled} {avg_fill_price} {status}')
         try:
@@ -86,12 +93,10 @@ class IBApi(EWrapper, EClient):
 
     def __init__(self):
         EClient.__init__(self, self)
-        self.order_id = 0
         self.thread_running = False
-        self.order_listeners = {}
+        self.orders = None
         self.is_connected = False
-        self.subscriptions: dict[str, CallChannel] = {}
-        # self.reqIds(-1)
+        self.subscriptions = {}
 
     def start(self):
         if not self.is_connected:
@@ -121,25 +126,21 @@ class IBApi(EWrapper, EClient):
         self.thread_running = False
 
     def place_order(self, position: Position, order_listener: Callable) -> BrokerOrder:
+        channel = self.orders.next_channel()
+        channel.add_callback(order_listener)
         order = Order()
         order.orderType = 'MKT'  # or 'LMT' ...
         order.action = 'BUY' if position.direction is Direction.LONG else 'SELL'
-
         if Symbols.is_crypto(position.symbol):
             order.cashQty = position.quantity
         else:
             order.totalQuantity = position.quantity
-
-        order_id = self.next_order_id()
-        self.order_listeners[order_id] = order_listener
-        broker_order = BrokerOrder(position, OrderStatus.PENDING, order_id)
-        self.placeOrder(order_id, contract_for(position.symbol), order)
-        return broker_order
+        self.placeOrder(channel.key, contract_for(position.symbol), order)
+        return BrokerOrder(position, OrderStatus.PENDING, channel.key)
 
     def subscribe_realtime(self, symbol):
         if symbol in self.subscriptions:
             raise ValueError(f'Already subscribed to {symbol}')
-        _log.info(f'Subscribing to realtime data for {symbol}')
 
         def on_tick_bar(tick_bar):
             events.emit(TickEvent(tick_bar))
@@ -148,12 +149,10 @@ class IBApi(EWrapper, EClient):
         channel.metadata = symbol
         self.subscriptions[symbol] = channel
 
-        def subscribe():
-            _log.info(f'Requesting realtime data for {symbol} via req_id {channel.key}')
-            contract = contract_for(symbol)
-            what_to_show = 'MIDPOINT' if Symbols.is_forex(symbol) else 'TRADES'
-            self.reqRealTimeBars(channel.key, contract, 5, what_to_show, False, [])
-        channel.call(subscribe, 0)
+        _log.info(f'Requesting realtime data for {symbol} via req_id {channel.key}')
+        contract = contract_for(symbol)
+        what_to_show = 'MIDPOINT' if Symbols.is_forex(symbol) else 'TRADES'
+        self.reqRealTimeBars(channel.key, contract, 5, what_to_show, False, [])
 
     def unsubscribe_realtime(self, symbol):
         if symbol not in self.subscriptions:
@@ -164,22 +163,16 @@ class IBApi(EWrapper, EClient):
         channel.close()
 
     def get_scanner_tags(self):
-        result = []
-        channel = channels.channel_for('scannerParams')
-        channel.add_callback(result.append)
-        channel.call(self.reqScannerParameters)
-        return result[0]
+        return channels.channel_for('scannerParams').call(self.reqScannerParameters)
 
     def scannerParameters(self, xml: str):
-        super().scannerParameters(xml)
         channels.channel_for('scannerParams').close(xml)
 
     def req_historical_data(self, request: DataRequest) -> SymbolData:
         """Blocking call to underlying API"""
+
         symbol_data = SymbolData(request.symbol)
-        channel = channels.next_channel()
-        channel.metadata = request.symbol
-        req_id = channel.key
+        channel = channels.next_channel(metadata=request.symbol, result=symbol_data)
         channel.add_callback(symbol_data.append_bar)
 
         def make_request():
@@ -189,16 +182,11 @@ class IBApi(EWrapper, EClient):
             duration = to_time_string(request.start, request.end)
             bs = bar_size(request.resolution)
             what_to_show = 'MIDPOINT' if Symbols.is_forex(request.symbol) else 'TRADES'
-            _log.info(f'Requesting historical data. IBKR request:'
-                      f' req_id: {req_id} query_time: {query_time} duration: {duration} bar_size: {bs}')
-            self.reqHistoricalData(req_id, contract, query_time, duration, bs, what_to_show, 1, 1, False, [])
+            _log.debug(f'Requesting historical data. IBKR request:'
+                       f' req_id: {channel.key} query_time: {query_time} duration: {duration} bar_size: {bs}')
+            self.reqHistoricalData(channel.key, contract, query_time, duration, bs, what_to_show, 1, 1, False, [])
 
-        channel.call(make_request)
-        return symbol_data
-
-    def next_order_id(self):
-        self.order_id += 1
-        return self.order_id
+        return channel.call(make_request)
 
     def create_scanner(self):
         """
@@ -234,7 +222,6 @@ class IBApi(EWrapper, EClient):
               "Currency:", contract.currency, execution)
 
     def historicalData(self, req_id, bar: BarData):
-        super().historicalData(req_id, bar)
         _log.debug(f'Received historical data: {bar!r}')
         date = parse_date(bar.date).astimezone()
         channel = channels.channel_for(req_id)
@@ -242,27 +229,24 @@ class IBApi(EWrapper, EClient):
         channel.on_data(tick_bar)
 
     def historicalDataEnd(self, req_id: int, start: str, end: str):
-        super().historicalDataEnd(req_id, start, end)
+        _log.debug(f'Completed historical data request {req_id}')
         channels.channel_for(req_id).close()
-        _log.info(f'Completed historical data request {req_id}')
 
     def nextValidId(self, order_id):
         _log.info(f'Connection ready. Next valid ID: {order_id}')
         EWrapper.nextValidId(self, order_id)
-        self.order_id = order_id
+        if self.orders is None:
+            self.orders = CallChannels(order_id)
         self.thread_running = True
 
     def orderStatus(self, order_id: OrderId, status: str, filled: float, remaining: float, avg_fill_price: float,
                     perm_id: int, parent_id: int, last_fill_price: float, client_id: int, why_held: str,
                     mkt_cap_price: float):
         _log.info(f'Received IB order status {order_id} {status}')
-        super().orderStatus(order_id, status, filled, remaining, avg_fill_price, perm_id, parent_id, last_fill_price,
-                            client_id, why_held, mkt_cap_price)
-        self.order_listeners[order_id](order_id, status, filled, avg_fill_price)
+        self.orders.channel_for(order_id).on_data((order_id, status, filled, avg_fill_price))
 
     def realtimeBar(self, req_id: TickerId, date: int, open_: float, high: float, low: float, close: float,
                     volume: int, wap: float, count: int):
-        super().realtimeBar(req_id, date, open_, high, low, close, volume, wap, count)
         _log.debug(f'Received realtime bar for {req_id}')
         channel = channels.channel_for(req_id)
         tick_bar = to_tick_bar(channel.metadata, date, open_, high, low, close, wap, volume)
@@ -348,60 +332,3 @@ def to_order_status(status: str) -> OrderStatus:
     else:
         _log.warning(f'Unrecognized order status from IB API: {status}')
         return OrderStatus.UNKNOWN
-
-
-class CallChannels:
-
-    def __init__(self, base_req_id=1000):
-        self._channels = {}
-        self._next_req_id = base_req_id
-
-    def channel_for(self, key) -> 'CallChannel':
-        if key not in self._channels:
-            self._channels[key] = CallChannel(key)
-        return self._channels[key]
-
-    def next_channel(self):
-        channel = self.channel_for(self._next_req_id)
-        self._next_req_id += 1
-        return channel
-
-    def close(self, key):
-        return self._channels.pop(key)
-
-
-channels = CallChannels()
-
-
-class CallChannel:
-
-    def __init__(self, key):
-        self.key = key
-        self._waiter = None
-        self._callbacks = []
-        self.metadata = None
-
-    def add_callback(self, callback):
-        self._callbacks.append(callback)
-
-    def call(self, call: Callable, max_wait=30):
-        if max_wait == 0:
-            call()
-        else:
-            self._waiter = Waiter(max_wait)
-            call()
-            while self._waiter.still_waiting():
-                time.sleep(1)
-            if self._waiter.expired():
-                _log.warning(f'Sync request {self.key} failed to complete in {self._waiter.max_wait}s,'
-                             f' results may be incomplete.')
-
-    def on_data(self, data):
-        for callback in self._callbacks:
-            callback(data)
-
-    def close(self, data=None):
-        if data is not None:
-            self.on_data(data)
-        self._waiter.done()
-        channels.close(self.key)

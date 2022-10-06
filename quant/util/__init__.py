@@ -5,9 +5,12 @@ from typing import Dict
 
 from .timeutil import Timer as UtilTimer
 from .console import Console, Colors
+from .channel import CallChannels
 
 Timer = UtilTimer
 console = Console
+_log = logging.getLogger(__name__)
+channels = CallChannels()
 
 
 def diff(a: Iterable, b: Iterable) -> (Set, Set):
