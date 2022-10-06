@@ -1,6 +1,5 @@
-from .service.watchlist import WatchListService
-from .markets import DataRequest, SymbolData, TickEvent, TickBar, Resolution
-from .ibkr import IBApi
+from .markets import DataRequest, SymbolData, TickEvent, TickBar, Resolution, WatchList
+from .ibkr import IBApi, exec_broker_call
 from .util import timeutil, diff, events, console
 from .util.misc import decimal as d
 
@@ -18,15 +17,15 @@ from numpy import float64, int64
 _log = logging.getLogger(__name__)
 
 
-def init_market_data(source, watchlist_service):
+def init_market_data(source, watchlist):
 
     if source == 'random':
-        RandomMarketData(watchlist_service, YahooData.current_price).start()
+        RandomMarketData(watchlist, YahooData.current_price).start()
     elif source == 'live':
-        IBKRMarketData(watchlist_service).start()
+        IBKRMarketData(watchlist).start()
     else:
         date = timeutil.parse_date(source)
-        IBKRHistoricalMarketData(watchlist_service, date, 'history').start()
+        IBKRHistoricalMarketData(watchlist, date, 'history').start()
 
 
 class YahooData:
@@ -55,10 +54,9 @@ class IBKRData:
 
     @staticmethod
     def fetch_symbol_data(request: DataRequest) -> SymbolData:
-        started = IBApi.instance().start()
-        symbol_data = IBApi.instance().req_historical_data(request)
-        if started:
-            IBApi.instance().shutdown()
+        def req_historical_data(broker: IBApi):
+            return broker.req_historical_data(request)
+        symbol_data = exec_broker_call(req_historical_data)
         console.announce(f'Received {len(symbol_data)} tick bars')
         return symbol_data
 
@@ -69,8 +67,8 @@ class IBKRData:
 
 class IBKRHistoricalMarketData:
 
-    def __init__(self, watchlist_service: WatchListService, start_date: datetime, cache_dir: str = None):
-        self.watchlist = watchlist_service.watchlist
+    def __init__(self, watchlist: WatchList, start_date: datetime, cache_dir: str = None):
+        self.watchlist = watchlist
         if not timeutil.is_trading_day(start_date):
             raise ValueError(f'Date {start_date} is not a trading day. No historical data available')
         self.start_date = start_date
@@ -142,8 +140,8 @@ class DataCache:
 
 class RandomMarketData:
 
-    def __init__(self, watchlist_service: WatchListService, first_open, tick_interval=5):
-        self.watchlist = watchlist_service.watchlist
+    def __init__(self, watchlist, first_open, tick_interval=5):
+        self.watchlist = watchlist
         self.first_open = first_open
         self.tick_interval = tick_interval
 
@@ -178,12 +176,12 @@ class RandomMarketData:
 
 class IBKRMarketData:
 
-    def __init__(self, watchlist_service: WatchListService):
-        self.watchlist = watchlist_service.watchlist
+    def __init__(self, watchlist: WatchList):
+        self.watchlist = watchlist
 
     def run(self):
         while True:
-            added, removed = diff(IBApi.instance().subscribed(), self.watchlist.symbols())
+            added, removed = diff(IBApi.instance().subscriptions.keys(), self.watchlist.symbols())
             for symbol in added:
                 IBApi.instance().subscribe_realtime(symbol)
             for symbol in removed:

@@ -142,13 +142,13 @@ class Resolver:
         return tick_bar
 
     def add_symbol(self, _, __, symbol):
-        _log.warning(f'Adding symbol {symbol}')
+        _log.info(f'Adding symbol {symbol}')
         self.watchlist.add_symbol(symbol)
         self.watchlist_service.save(self.watchlist)
         return self._watchlist_payload()
 
     def remove_symbol(self, _, __, symbol):
-        _log.warning(f'Removing symbol {symbol}')
+        _log.info(f'Removing symbol {symbol}')
         self.watchlist.remove_symbol(symbol)
         self.watchlist_service.save(self.watchlist)
         return self._watchlist_payload()

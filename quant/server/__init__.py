@@ -44,8 +44,8 @@ def main():
     session = sessionmaker(bind=engine, future=True)()
     watchlist_service = WatchListService(session)
 
-    init_market_data(args.source, watchlist_service)
-    events.observe(TickEvent, _log.info)
+    init_market_data(args.source, watchlist_service.watchlist)
+    events.observe(TickEvent, _log.debug)
 
     res = Resolver(watchlist_service, search_service)
     run_server(res, 5000)

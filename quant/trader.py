@@ -1,8 +1,8 @@
 from .broker import Broker, Position, Direction, OrderEvent
-from util.console import console, Colors
+from .util.console import Colors
 from .sources import init_market_data
-from .util import events, Parser
-from .markets import TickEvent, TickBar, WatchList
+from .util import events, Parser, console
+from .markets import TickEvent, TickBar, WatchList, render_bar
 from .fakebroker import FakeBroker
 from .ibkr import InteractiveBroker
 
@@ -11,7 +11,7 @@ from functools import partial
 import time
 import logging
 
-log = logging.getLogger(__name__)
+_log = logging.getLogger(__name__)
 
 
 class Trader:
@@ -37,7 +37,7 @@ class Trader:
         self.is_open = True
 
     def on_bar(self, bar: TickBar):
-        msg = console.render_bar(bar, self.prev_close, self.prev_wap)
+        msg = render_bar(bar, self.prev_close, self.prev_wap)
         if self.is_open:
             msg += console.wrap(f' [P/L: ${self.broker.p_or_l()}]', Colors.BLUE)
         print(msg)

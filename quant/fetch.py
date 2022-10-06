@@ -10,6 +10,7 @@ from .sources import YahooData, IBKRData
 from .markets import DataRequest, Resolution
 from pandas import DataFrame
 from functools import partial
+from .util import Parser
 from .util.timeutil import Timer
 from datetime import datetime
 from .markets import render_bar_data
@@ -42,7 +43,7 @@ yahoo = partial(fetch, 'yahoo')
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Fetch data from a given source')
+    parser = Parser(description='Fetch data from a given source')
     parser.add_argument('source', type=str, help='The source to use, for example "yahoo"')
     parser.add_argument('start', type=str, help='Start date or time (uses dateparser)')
     parser.add_argument('end', type=str, help='End date or time (uses dateparser)')

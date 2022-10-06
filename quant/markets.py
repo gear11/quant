@@ -12,7 +12,7 @@ from enum import Enum
 import dateparser
 import logging
 
-log = logging.getLogger(__name__)
+_log = logging.getLogger(__name__)
 
 
 class Resolution(Enum):
@@ -192,7 +192,7 @@ class WatchList:
                 self.add_symbol(s)
 
     def __setitem__(self, symbol, last_price: TickBar):
-        log.debug(f'Updating watchlist tickbar: {last_price}')
+        _log.debug(f'Updating watchlist tickbar: {last_price}')
         self.last_price[symbol] = last_price
 
     def __getitem__(self, symbol):
@@ -225,10 +225,10 @@ class WatchList:
         symbol = symbol.upper()
         if (symbol not in self.last_price) or (self.last_price[symbol].close == 0):
             tick_bar = TickBar(symbol, datetime.now(), price, price, price, price, price, 0)
-            log.info(f'Adding {symbol} at {tick_bar}')
+            _log.info(f'Adding {symbol} at {tick_bar}')
             self.last_price[symbol] = tick_bar
         else:
-            log.info(f'Symbol {symbol} already present at {self.last_price[symbol].close}')
+            _log.info(f'Symbol {symbol} already present at {self.last_price[symbol].close}')
 
     def remove_symbol(self, symbol):
         del self.last_price[symbol]
