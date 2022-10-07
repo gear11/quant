@@ -1,6 +1,9 @@
 """
  Interactive Broker API Wrapper and Broker based on that API
 """
+from ibapi.scanner import ScannerSubscription
+from ibapi.tag_value import TagValue
+
 from .broker import Broker, Position, Direction, Order as BrokerOrder, OrderStatus, OrderEvent
 from .util.timeutil import spans_days, count_trading_days, parse_date
 from .util.misc import decimal as d
@@ -14,7 +17,7 @@ from ibapi.commission_report import CommissionReport
 from ibapi.common import TickerId, BarData
 from ibapi.execution import Execution
 from ibapi.wrapper import EWrapper, OrderId, Order
-from ibapi.contract import Contract
+from ibapi.contract import Contract, ContractDetails
 import threading
 import time
 from datetime import datetime
@@ -107,7 +110,6 @@ class IBApi(EWrapper, EClient):
             _log.info('Starting IB Thread')
             ib_thread = threading.Thread(target=self.run, daemon=True)
             ib_thread.start()
-
             t = Timer()
             while not self.thread_running:
                 if t.total() > 10:
@@ -124,6 +126,7 @@ class IBApi(EWrapper, EClient):
         self.disconnect()
         self.is_connected = False
         self.thread_running = False
+        self.orders = None
 
     def place_order(self, position: Position, order_listener: Callable) -> BrokerOrder:
         channel = self.orders.next_channel()
@@ -141,14 +144,10 @@ class IBApi(EWrapper, EClient):
     def subscribe_realtime(self, symbol):
         if symbol in self.subscriptions:
             raise ValueError(f'Already subscribed to {symbol}')
-
-        def on_tick_bar(tick_bar):
-            events.emit(TickEvent(tick_bar))
         channel = channels.next_channel()
-        channel.add_callback(on_tick_bar)
+        channel.add_callback(lambda tick_bar: events.emit(TickEvent(tick_bar)))
         channel.metadata = symbol
         self.subscriptions[symbol] = channel
-
         _log.info(f'Requesting realtime data for {symbol} via req_id {channel.key}')
         contract = contract_for(symbol)
         what_to_show = 'MIDPOINT' if Symbols.is_forex(symbol) else 'TRADES'
@@ -188,7 +187,17 @@ class IBApi(EWrapper, EClient):
 
         return channel.call(make_request)
 
-    def create_scanner(self):
+    def create_scanner(self, tags, callback):
+        scanner = ScannerSubscription()
+        scanner.instrument = "STK"
+        scanner.locationCode = "STK.US"
+        scanner.scanCode = 'TOP_VOLUME_RATE'
+        tags = [TagValue(k, v) for k, v in tags.items()]
+
+        channel = channels.next_channel()
+        channel.add_callback(callback)
+        self.reqScannerSubscription(channel.key, scanner, [], tags)
+
         """
         self.reqScannerSubscription(7001, ScannerSubscriptionSamples.HighOptVolumePCRatioUSIndexes(), "", null);
 
@@ -205,6 +214,9 @@ class IBApi(EWrapper, EClient):
         List < TagValue > {t1, t2, t3};
         client.reqScannerSubscription(7002, ScannerSubscriptionSamples.HotUSStkByVolume(), null, TagValues); // re
         """
+
+    def cancel_scanner(self, key):
+        self.cancelScannerSubscription(key)
 
     # CALLBACK METHODS FROM IBAPI
 
@@ -252,6 +264,14 @@ class IBApi(EWrapper, EClient):
         tick_bar = to_tick_bar(channel.metadata, date, open_, high, low, close, wap, volume)
         channel.on_data(tick_bar)
 
+    def scannerData(self, req_id: int, rank: int, contract_details: ContractDetails,
+                    distance: str, benchmark: str, projection: str, legs_str: str):
+        _log.debug('Scanner result')
+        channels.channel_for(req_id).buffer((rank, contract_details, distance, benchmark, projection, legs_str))
+
+    def scannerDataEnd(self, req_id: int):
+        _log.info('Flushing scanner data')
+        channels.channel_for(req_id).flush()
 
 # UTILITY METHODS
 

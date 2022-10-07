@@ -17,7 +17,7 @@ class CallChannels:
             self._channels[key] = CallChannel(self, key, metadata, result)
         return self._channels[key]
 
-    def next_channel(self, metadata=None, result=None):
+    def next_channel(self, metadata=None, result=None) -> 'CallChannel':
         channel = self.channel_for(self._next_req_id, metadata, result)
         self._next_req_id += 1
         return channel
@@ -30,11 +30,13 @@ class CallChannel:
 
     def __init__(self, channels: CallChannels, key, metadata=None, result=None):
         self.key = key
+        self.metadata = metadata
+        self.result = result
+
         self._waiter = None
         self._callbacks = []
-        self.metadata = metadata
-        self.channels = channels
-        self.result = result
+        self._buffer = []
+        self._channels = channels
 
     def add_callback(self, callback):
         self._callbacks.append(callback)
@@ -58,8 +60,17 @@ class CallChannel:
         if self.result is None:
             self.result = data
 
+    def buffer(self, data):
+        self._buffer.append(data)
+
+    def flush(self):
+        data = list(self._buffer)
+        self._buffer.clear()
+        self.on_data(data)
+
     def close(self, data=None):
         if data is not None:
             self.on_data(data)
-        self._waiter.done()
-        self.channels.close(self.key)
+        if self._waiter is not None:
+            self._waiter.done()
+        self._channels.close(self.key)
